@@ -193,8 +193,6 @@ class GameState(BaseModel):
     def initialize_heroes(self) -> bool:
         """Initialize heroes for all players when game starts."""
         try:
-            self.generate_obstacles()
-            
             player_list = list(self.players.keys())
             
             for i, player_id in enumerate(player_list):
@@ -239,19 +237,27 @@ class GameState(BaseModel):
         
         # Keep track of positions we want to keep clear for heroes
         reserved_positions = set()
-        for y in range(2):  # Reserve first two rows for player 1
+        for y in range(4):  # Reserve first four rows for player 1
             for x in range(self.grid_size):
                 reserved_positions.add(f"{x},{y}")
-        for y in range(self.grid_size-2, self.grid_size):  # Reserve last two rows for player 2
+        for y in range(self.grid_size-4, self.grid_size):  # Reserve last four rows for player 2
             for x in range(self.grid_size):
                 reserved_positions.add(f"{x},{y}")
 
-        while len(self.obstacles) < num_obstacles:
+        attempts = 0
+        max_attempts = 1000  # Prevent infinite loop
+        while len(self.obstacles) < num_obstacles and attempts < max_attempts:
             x = random.randint(0, self.grid_size - 1)
             y = random.randint(0, self.grid_size - 1)
-            pos = f"{x},{y}"
-            if pos not in self.obstacles and pos not in reserved_positions:
-                self.obstacles.add(pos)
+            pos_key = f"{x},{y}"
+            
+            if pos_key not in reserved_positions and pos_key not in self.obstacles:
+                self.obstacles.add(pos_key)
+            
+            attempts += 1
+
+        if len(self.obstacles) < num_obstacles:
+            logger.warning(f"Could only place {len(self.obstacles)} obstacles out of {num_obstacles} desired")
 
     def is_position_occupied(self, x: int, y: int) -> bool:
         """Check if a position is occupied by any hero"""
@@ -502,18 +508,17 @@ class GameState(BaseModel):
         if len(self.players) != 2:
             return
             
-        self.status = GameStatus.IN_PROGRESS
-        
-        # Set the first player's turn
-        self.current_turn = list(self.players.keys())[0]
-        
-        # Generate obstacles
+        # First generate obstacles
         self.generate_obstacles()
         
-        # Reset all heroes' movement points
-        for player in self.players.values():
-            for hero in player.heroes:
-                hero.reset_movement()
+        # Then initialize heroes
+        if not self.initialize_heroes():
+            logger.error("Failed to initialize heroes")
+            return
+            
+        # Finally, set game state
+        self.status = GameStatus.IN_PROGRESS
+        self.current_turn = list(self.players.keys())[0]
 
     def can_move_to(self, hero_id: str, new_position: Position) -> bool:
         """Check if a hero can move to a new position"""
