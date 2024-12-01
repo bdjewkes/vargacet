@@ -312,6 +312,8 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
       type: 'undo_move'
     }));
     setSelectedHero(null);
+    setSelectedAbility(null);
+    setHoveredHero(null);
   };
 
   // Update selected hero when game state changes

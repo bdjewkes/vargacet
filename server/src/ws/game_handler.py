@@ -182,14 +182,10 @@ class ConnectionManager:
                 await self.send_error(websocket, "Not your turn")
                 return
 
-            # Find all heroes owned by the player and undo their moves
-            for player in game.players.values():
-                if player.player_id == player_id:
-                    for hero in player.heroes:
-                        hero.undo_move()
-            
-            # Reset the moved hero tracking
-            game.moved_hero_id = None
+            # Use the new undo system to restore turn start state
+            if not game.undo_turn():
+                await self.send_error(websocket, "No turn state to restore")
+                return
 
             await self.broadcast_game_state(game_id)
 

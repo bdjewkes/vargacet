@@ -141,6 +141,7 @@ class GameState(BaseModel):
     obstacles: Set[str] = set()
     moved_hero_id: Optional[str] = None
     _hero_letter_counter: int = 0  # Internal counter for assigning hero letters
+    start_of_turn_state: Optional[Dict] = None  # Store serialized game state at turn start
 
     def create_hero(self, owner_id: str, position: Position) -> Hero:
         """Create a new hero with a unique letter name"""
@@ -239,10 +240,11 @@ class GameState(BaseModel):
         
         # Keep track of positions we want to keep clear for heroes
         reserved_positions = set()
-        for y in range(4):  # Reserve first four rows for player 1
+        reserved_player_starting_height = 3
+        for y in range(reserved_player_starting_height):  # Reserve first four rows for player 1
             for x in range(self.grid_size):
                 reserved_positions.add(f"{x},{y}")
-        for y in range(self.grid_size-4, self.grid_size):  # Reserve last four rows for player 2
+        for y in range(self.grid_size-reserved_player_starting_height, self.grid_size):  # Reserve last four rows for player 2
             for x in range(self.grid_size):
                 reserved_positions.add(f"{x},{y}")
 
@@ -381,24 +383,74 @@ class GameState(BaseModel):
 
     def set_next_turn(self) -> None:
         """Set the turn to the next player."""
-        player_ids = list(self.players.keys())
-        if not player_ids:
-            self.current_turn = None
+        if not self.players:
             return
 
+        # Save current game state before changing turn
+        self.save_turn_state()
+            
+        # Get list of player IDs
+        player_ids = list(self.players.keys())
+            
         if self.current_turn is None:
+            # Start with first player
             self.current_turn = player_ids[0]
         else:
-            current_index = player_ids.index(self.current_turn)
-            next_index = (current_index + 1) % len(player_ids)
-            self.current_turn = player_ids[next_index]
+            # Find current player's index
+            current_idx = player_ids.index(self.current_turn)
+            # Set to next player (wrap around to 0 if at end)
+            self.current_turn = player_ids[(current_idx + 1) % len(player_ids)]
             
-        self.moved_hero_id = None
-        
-        if self.current_turn:
+        # Reset movement points for current player's heroes
+        if self.current_turn in self.players:
             current_player = self.players[self.current_turn]
             for hero in current_player.heroes:
                 hero.reset_movement()
+                # Reset action points at turn start
+                hero.current_action_points = hero.max_action_points
+
+    def save_turn_state(self) -> None:
+        """Save the current game state at the start of a turn"""
+        # Create a copy of the current state, excluding the start_of_turn_state and current_turn
+        current_state = self.dict(exclude={'start_of_turn_state', 'current_turn'})
+        
+        # Convert PlayerState objects to their dict representation
+        if 'players' in current_state:
+            current_state['players'] = {
+                player_id: player.dict() 
+                for player_id, player in self.players.items()
+            }
+        
+        self.start_of_turn_state = current_state
+
+    def undo_turn(self) -> bool:
+        """Restore the game state to the start of the current turn"""
+        if self.start_of_turn_state is None:
+            return False
+
+        # Remember whose turn it is
+        current_turn = self.current_turn
+
+        saved_state = self.start_of_turn_state.copy()
+        
+        # Convert saved player states back to PlayerState objects
+        if 'players' in saved_state:
+            saved_state['players'] = {
+                player_id: PlayerState(**player_data)
+                for player_id, player_data in saved_state['players'].items()
+            }
+
+        # Restore all fields from the saved state
+        for field, value in saved_state.items():
+            if hasattr(self, field):
+                setattr(self, field, value)
+
+        # Ensure it's still the same player's turn
+        self.current_turn = current_turn
+
+        # Clear the moved hero ID since we're undoing
+        self.moved_hero_id = None
+        return True
 
     def remove_dead_heroes(self) -> List[Hero]:
         """Remove any heroes with 0 or less HP and return the list of removed heroes"""
