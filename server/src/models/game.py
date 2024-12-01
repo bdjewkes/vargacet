@@ -74,6 +74,7 @@ class GameState(BaseModel):
     grid_size: int = 20
     heroes_per_player: int = 4
     obstacles: Set[str] = set()  # Store obstacles as "x,y" strings
+    moved_hero_id: Optional[str] = None  # Track which hero has moved this turn
 
     def add_player(self, player_id: str) -> bool:
         """Add a player to the game if there's room. Returns True if successful."""
@@ -234,22 +235,25 @@ class GameState(BaseModel):
         logger.info(f"Game status - current_turn: {self.current_turn}, players: {list(self.players.keys())}")
         return status_dict
 
-    def set_next_turn(self):
+    def set_next_turn(self) -> None:
         """Set the turn to the next player."""
-        if not self.players:
+        player_ids = list(self.players.keys())
+        if not player_ids:
+            self.current_turn = None
             return
 
-        players = list(self.players.keys())
-        if not self.current_turn:
-            self.current_turn = players[0]
-            return
-
-        current_index = players.index(self.current_turn)
-        next_index = (current_index + 1) % len(players)
-        self.current_turn = players[next_index]
-
-        # Reset movement points for next player's heroes
-        for hero in self.players[self.current_turn].heroes:
-            hero.reset_movement()
-
-        logger.info(f"Turn changed from {players[current_index]} to {self.current_turn}")
+        if self.current_turn is None:
+            self.current_turn = player_ids[0]
+        else:
+            current_index = player_ids.index(self.current_turn)
+            next_index = (current_index + 1) % len(player_ids)
+            self.current_turn = player_ids[next_index]
+            
+        # Reset moved hero when turn changes
+        self.moved_hero_id = None
+        
+        # Reset movement points for all heroes of the new current player
+        if self.current_turn:
+            current_player = self.players[self.current_turn]
+            for hero in current_player.heroes:
+                hero.reset_movement()

@@ -34,6 +34,7 @@ interface GameState {
   status: string;
   grid_size: number;
   obstacles: string[];  // Array of "x,y" strings
+  moved_hero_id: string | null;  // Track which hero has moved this turn
 }
 
 interface GameProps {
@@ -186,6 +187,10 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
       .find(h => h.position.x === x && h.position.y === y);
 
     if (clickedHero?.owner_id === playerId) {
+      // Don't allow selecting a different hero if one has already moved
+      if (gameState.moved_hero_id && gameState.moved_hero_id !== clickedHero.id) {
+        return;
+      }
       setSelectedHero(clickedHero);
       return;
     }
@@ -228,6 +233,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
     }));
     setSelectedHero(null);
     setHasMoved(false);
+    // Note: We don't need to explicitly reset moved_hero_id here as it will come from the server's game state update
   };
 
   // Reset state when turn changes

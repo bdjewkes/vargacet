@@ -128,6 +128,10 @@ class ConnectionManager:
                 await self.send_error(websocket, "Invalid position format")
                 return
 
+            if game.moved_hero_id is not None and game.moved_hero_id != hero_id:
+                await self.send_error(websocket, "You can only move one hero per turn")
+                return
+
             # Find the hero
             hero = None
             for player in game.players.values():
@@ -151,6 +155,9 @@ class ConnectionManager:
                 await self.send_error(websocket, "Invalid move")
                 return
 
+            # Track which hero moved this turn
+            game.moved_hero_id = hero_id
+
             await self.broadcast_game_state(game_id)
 
         elif message_type == "undo_move":
@@ -167,6 +174,9 @@ class ConnectionManager:
                 if player.player_id == player_id:
                     for hero in player.heroes:
                         hero.undo_move()
+            
+            # Reset the moved hero tracking
+            game.moved_hero_id = None
 
             await self.broadcast_game_state(game_id)
 
