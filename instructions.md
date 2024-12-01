@@ -4,7 +4,7 @@ Vargacet is a turn-based tactical combat game for two players. Each player contr
 
 # Architecture
 
-Vargacet is built with a python server using the latest version of flask on the backend, with a client written in typescript for the frontend. The server is responsible for handling the game logic and state, and the client is responsible for rendering the game and handling user input.
+Vargacet is built with a python server using the latest version of FastAPI, and a client written in typescript for the frontend. The server is responsible for handling the game logic and state, and the client is responsible for rendering the game and handling user input.
 
 The client and the server communicate using the websockets protocol, and the server is responsible for broadcasting game state updates to all connected clients.
 

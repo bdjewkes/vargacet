@@ -1,17 +1,14 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from .ws.game_handler import manager
-from .game.game_manager import game_manager
-from pydantic import BaseModel
+import uvicorn
+import uuid
 import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from pydantic import BaseModel
+from .ws.game_handler import manager
+from .models.game import GameState
 
 app = FastAPI(title="Vargacet Game Server")
 
-# Configure CORS for frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],  # Frontend URL
@@ -19,6 +16,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class CreateGameRequest(BaseModel):
     player_id: str
@@ -29,45 +30,73 @@ async def root():
 
 @app.get("/games")
 async def list_games():
-    """List all active games."""
-    return game_manager.list_games()
+    """List all active games and their basic information."""
+    games_list = []
+    for game_id, game in manager.games.items():
+        game_info = {
+            "game_id": game_id,
+            "status": game.status,
+            "players": game.players,
+            "player_count": len(game.players),
+            "is_full": game.is_full()
+        }
+        games_list.append(game_info)
+    return games_list
 
-@app.post("/game/create")
+@app.post("/game")
 async def create_game(request: CreateGameRequest):
-    """Create a new game session."""
-    logger.info(f"Creating new game for player {request.player_id}")
-    game = game_manager.create_game()
+    """Create a new game and add the creating player to it."""
+    game_id = str(uuid.uuid4())
+    game = GameState(game_id=game_id)
+    manager.games[game_id] = game
+    
     # Add the creating player to the game
-    game_manager.add_player_to_game(game.game_id, request.player_id)
-    logger.info(f"Created game {game.game_id}")
-    return {"game_id": game.game_id}
+    game.add_player(request.player_id)
+    
+    logger.info(f"Created game {game_id} for player {request.player_id}")
+    return {"game_id": game_id}
 
 @app.get("/game/{game_id}")
-async def get_game_status(game_id: str):
-    """Get current game status."""
-    game = game_manager.get_game(game_id)
-    if not game:
-        raise HTTPException(status_code=404, detail="Game not found")
-    return game.get_game_status()
+async def get_game(game_id: str):
+    game = manager.games.get(game_id)
+    if game:
+        return game.get_game_status()
+    logger.error(f"Game {game_id} not found")
+    return {"error": "Game not found"}
 
 @app.websocket("/ws/game/{game_id}/player/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str, player_id: str):
-    logger.info(f"WebSocket connection attempt - Game: {game_id}, Player: {player_id}")
+    # Create game if it doesn't exist
+    if game_id not in manager.games:
+        game = GameState(game_id=game_id)
+        manager.games[game_id] = game
+
+    game = manager.games[game_id]
     
-    # Attempt to connect player to game
-    success = await manager.connect(websocket, game_id, player_id)
-    if not success:
-        logger.error(f"Failed to connect player {player_id} to game {game_id}")
-        await websocket.close(code=4000)
-        return
+    # Add player if not already in game
+    if player_id not in game.players:
+        if not game.add_player(player_id):
+            await websocket.close(code=4000, reason="Game is full")
+            return
 
     try:
+        await manager.connect(websocket, game_id, player_id)
+        logger.info(f"Player {player_id} connected to game {game_id}")
+        
         while True:
-            # Receive and process messages
-            data = await websocket.receive_json()
-            logger.info(f"Received message from player {player_id}: {data}")
-            await manager.handle_message(game_id, player_id, data)
+            try:
+                data = await websocket.receive_json()
+                logger.info(f"Received message from player {player_id}: {data}")
+                await manager.handle_message(websocket, game_id, player_id, data)
+            except Exception as e:
+                logger.error(f"Error handling message: {e}")
+                break
+                
     except Exception as e:
-        logger.error(f"Error in websocket connection: {e}")
+        logger.error(f"WebSocket error: {e}")
     finally:
         manager.disconnect(game_id, player_id)
+        logger.info(f"Player {player_id} disconnected from game {game_id}")
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -77,22 +77,14 @@ export const useWebSocket = (
     };
   }, [connect]);
 
-  const sendMessage = useCallback((message: any) => {
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
-      console.error('WebSocket is not connected');
-      return false;
-    }
-
-    try {
-      const messageStr = JSON.stringify(message);
-      console.log('Sending WebSocket message:', messageStr);
-      ws.current.send(messageStr);
-      return true;
-    } catch (error) {
-      console.error('Error sending message:', error);
-      return false;
+  const send = useCallback((data: string) => {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      console.log('Sending WebSocket message:', data);
+      ws.current.send(data);
+    } else {
+      console.error('WebSocket is not open. Current state:', ws.current?.readyState);
     }
   }, []);
 
-  return { sendMessage, isConnected };
+  return { send, isConnected };
 };

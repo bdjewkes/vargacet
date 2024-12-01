@@ -38,6 +38,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ gameId, playerId }) => {
       if (data.type === 'error') {
         setError(data.payload.message);
       } else if (data.type === 'game_state') {
+        console.log('Updating game state:', data.payload);
         setGameState(data.payload);
         setIsSubmitting(false);
       }
@@ -47,7 +48,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ gameId, playerId }) => {
   }, []);
 
   const wsUrl = `ws://localhost:8000/ws/game/${gameId}/player/${playerId}`;
-  const { sendMessage, isConnected } = useWebSocket(wsUrl, handleMessage);
+  const { send, isConnected } = useWebSocket(wsUrl, handleMessage);
 
   useEffect(() => {
     if (isConnected && !hasInitialConnection) {
@@ -60,14 +61,14 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ gameId, playerId }) => {
     if (!playerName.trim()) return;
 
     setIsSubmitting(true);
-    sendMessage({
+    send({
       type: 'update_name',
       payload: { name: playerName }
     });
   };
 
   const handleStartGame = () => {
-    sendMessage({
+    send({
       type: 'start_game'
     });
   };
@@ -88,7 +89,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ gameId, playerId }) => {
   }
 
   if (gameState.status === 'in_progress') {
-    return <Game gameState={gameState} playerId={playerId} />;
+    return (
+      <Game 
+        gameState={gameState} 
+        playerId={playerId} 
+        onGameStateUpdate={setGameState}
+      />
+    );
   }
 
   const currentPlayer = gameState.players[playerId];

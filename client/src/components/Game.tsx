@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useWebSocket } from '../hooks/useWebSocket';
 import './Game.css';
 
 interface Position {
@@ -36,6 +37,7 @@ interface GameState {
 interface GameProps {
   gameState: GameState;
   playerId: string;
+  onGameStateUpdate: (gameState: GameState) => void;
 }
 
 interface GridCell {
@@ -44,14 +46,30 @@ interface GridCell {
   isObstacle: boolean;
 }
 
-const Game: React.FC<GameProps> = ({ gameState, playerId }) => {
+const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) => {
   const [selectedHero, setSelectedHero] = useState<Hero | null>(null);
+  const [hoveredHero, setHoveredHero] = useState<Hero | null>(null);
+  const [hasMoved, setHasMoved] = useState(false);
+
+  const wsUrl = `ws://localhost:8000/ws/game/${gameState.game_id}/player/${playerId}`;
+  const { send } = useWebSocket(wsUrl, (event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log('Game received message:', data);
+      
+      if (data.type === 'game_state') {
+        // Update game state
+        onGameStateUpdate(data.payload);
+      }
+    } catch (error) {
+      console.error('Error parsing game message:', error);
+    }
+  });
+
+  const isMyTurn = gameState.current_turn === playerId;
 
   // Create a grid with hero positions and obstacles
   const grid = useMemo(() => {
-    console.log('Received game state:', gameState);
-    console.log('Obstacles:', gameState.obstacles);
-
     const newGrid: GridCell[][] = Array(gameState.grid_size)
       .fill(null)
       .map(() => Array(gameState.grid_size).fill(null)
@@ -59,13 +77,10 @@ const Game: React.FC<GameProps> = ({ gameState, playerId }) => {
 
     // Place obstacles
     const obstacleSet = new Set(gameState.obstacles);
-    console.log('Obstacle set:', obstacleSet);
-    
     for (let y = 0; y < gameState.grid_size; y++) {
       for (let x = 0; x < gameState.grid_size; x++) {
         const key = `${x},${y}`;
         if (obstacleSet.has(key)) {
-          console.log('Setting obstacle at:', key);
           newGrid[y][x].isObstacle = true;
         }
       }
@@ -87,7 +102,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId }) => {
 
   // Calculate movement range using BFS
   const movementRange = useMemo(() => {
-    if (!selectedHero) return new Set<string>();
+    if (!selectedHero || !isMyTurn || hasMoved) return new Set<string>();
 
     const range = new Set<string>();
     const queue: { x: number; y: number; moves: number }[] = [{
@@ -96,7 +111,6 @@ const Game: React.FC<GameProps> = ({ gameState, playerId }) => {
       moves: selectedHero.movement_points
     }];
     const visited = new Set<string>();
-
     const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 
     while (queue.length > 0) {
@@ -106,7 +120,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId }) => {
       if (visited.has(key)) continue;
       visited.add(key);
 
-      // Add current position to range (except starting position if occupied by hero)
+      // Add current position to range (except starting position)
       if (!(x === selectedHero.position.x && y === selectedHero.position.y)) {
         range.add(key);
       }
@@ -130,8 +144,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId }) => {
 
         // Skip if occupied by another hero or obstacle
         const cell = grid[newY][newX];
-        if (cell.isObstacle || (cell.hero && 
-            !(newX === selectedHero.position.x && newY === selectedHero.position.y))) {
+        if (cell.isObstacle || (cell.hero && cell.hero.id !== selectedHero.id)) {
           continue;
         }
 
@@ -140,78 +153,77 @@ const Game: React.FC<GameProps> = ({ gameState, playerId }) => {
     }
 
     return range;
-  }, [selectedHero, gameState.grid_size, grid]);
+  }, [selectedHero, grid, gameState.grid_size, isMyTurn, hasMoved]);
+
+  const handleCellClick = (x: number, y: number) => {
+    if (!isMyTurn) return;
+
+    const cell = grid[y][x];
+    const key = `${x},${y}`;
+
+    // If clicking on own hero and haven't moved yet, select it
+    if (cell.hero && cell.isCurrentPlayer && !hasMoved) {
+      setSelectedHero(cell.hero);
+      return;
+    }
+
+    // If hero selected and clicking on valid move position, move hero
+    if (selectedHero && movementRange.has(key) && !hasMoved) {
+      send(JSON.stringify({
+        type: 'move_hero',
+        payload: {
+          hero_id: selectedHero.id,
+          position: { x, y }
+        }
+      }));
+      setHasMoved(true);
+      setSelectedHero(null);
+    }
+  };
+
+  const handleEndTurn = () => {
+    if (!isMyTurn || !hasMoved) return;
+
+    // Reset local state
+    setSelectedHero(null);
+    setHasMoved(false);
+
+    // Send end turn message
+    send(JSON.stringify({
+      type: 'end_turn',
+      game_id: gameState.game_id,
+      player_id: playerId
+    }));
+  };
+
+  // Reset state when turn changes
+  useEffect(() => {
+    setSelectedHero(null);
+    setHasMoved(false);
+  }, [gameState.current_turn]);
 
   return (
     <div className="game-container">
-      <div className="game-sidebar">
-        {selectedHero ? (
-          <div className="hero-stats">
-            <h3>Hero Stats</h3>
-            <div className="stat-row">
-              <span>HP:</span>
-              <div className="hp-bar">
-                <div 
-                  className="hp-fill" 
-                  style={{ width: `${(selectedHero.current_hp / selectedHero.max_hp) * 100}%` }}
-                />
-                <span className="hp-text">
-                  {selectedHero.current_hp} / {selectedHero.max_hp}
-                </span>
-              </div>
-            </div>
-            <div className="stat-row">
-              <span>Damage:</span>
-              <span>{selectedHero.damage}</span>
-            </div>
-            <div className="stat-row">
-              <span>Movement:</span>
-              <span>{selectedHero.movement_points}</span>
-            </div>
-            <div className="stat-row">
-              <span>Armor:</span>
-              <span>{selectedHero.armor}</span>
-            </div>
-          </div>
-        ) : (
-          <div className="hero-stats-placeholder">
-            Hover over a hero to see their stats
-          </div>
-        )}
-        <div className="game-info">
-          <div>Current Turn: {gameState.current_turn === playerId ? 'Your Turn' : 'Opponent\'s Turn'}</div>
-          {Object.values(gameState.players).map(player => (
-            <div key={player.player_id} className="player-info">
-              <span>{player.name || 'Unnamed Player'}</span>
-              <span className={`connection-status ${player.connected ? 'connected' : 'disconnected'}`}>
-                {player.connected ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
       <div className="game-grid">
         {grid.map((row, y) => (
           <div key={y} className="grid-row">
             {row.map((cell, x) => {
-              const isInRange = movementRange.has(`${x},${y}`);
+              const key = `${x},${y}`;
+              const isInRange = movementRange.has(key);
+              const isSelected = selectedHero?.position.x === x && selectedHero?.position.y === y;
+
               return (
-                <div 
-                  key={`${x}-${y}`} 
-                  className={`grid-cell ${isInRange ? 'in-range' : ''} ${cell.isObstacle ? 'obstacle' : ''}`}
-                  onMouseEnter={() => cell.hero && setSelectedHero(cell.hero)}
-                  onMouseLeave={() => setSelectedHero(null)}
+                <div
+                  key={x}
+                  className={`grid-cell${cell.isObstacle ? ' obstacle' : ''}${isInRange ? ' in-range' : ''}${isSelected ? ' selected' : ''}`}
+                  onClick={() => handleCellClick(x, y)}
                 >
                   {cell.hero && (
                     <div 
-                      className={`hero ${cell.isCurrentPlayer ? 'hero-player' : 'hero-opponent'}`}
-                      title={`Hero ${cell.hero.id}`}
-                    >
-                      <div 
-                        className="hero-hp-bar"
-                        style={{ width: `${(cell.hero.current_hp / cell.hero.max_hp) * 100}%` }}
-                      />
-                    </div>
+                      className={`hero${cell.isCurrentPlayer ? ' hero-player' : ' hero-opponent'}`}
+                      onMouseEnter={() => setHoveredHero(cell.hero)}
+                      onMouseLeave={() => setHoveredHero(null)}
+                    />
                   )}
                 </div>
               );
@@ -219,6 +231,57 @@ const Game: React.FC<GameProps> = ({ gameState, playerId }) => {
           </div>
         ))}
       </div>
+
+      <div className="game-sidebar">
+        {(selectedHero || hoveredHero) ? (
+          <div className="hero-stats">
+            <h3>{selectedHero ? 'Selected Hero' : 'Hovered Hero'}</h3>
+            <div className="stat-row">
+              <span>HP:</span>
+              <div className="hp-bar">
+                <div 
+                  className="hp-fill" 
+                  style={{ width: `${((selectedHero || hoveredHero)!.current_hp / (selectedHero || hoveredHero)!.max_hp) * 100}%` }}
+                />
+                <span className="hp-text">
+                  {(selectedHero || hoveredHero)!.current_hp}/{(selectedHero || hoveredHero)!.max_hp}
+                </span>
+              </div>
+            </div>
+            <div className="stat-row">
+              <span>Movement:</span>
+              <span>{(selectedHero || hoveredHero)!.movement_points}</span>
+            </div>
+            <div className="stat-row">
+              <span>Damage:</span>
+              <span>{(selectedHero || hoveredHero)!.damage}</span>
+            </div>
+            <div className="stat-row">
+              <span>Armor:</span>
+              <span>{(selectedHero || hoveredHero)!.armor}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="hero-stats-placeholder">
+            {isMyTurn ? (
+              hasMoved ? 
+                "End your turn when ready" :
+                "Select a hero to move"
+            ) : (
+              "Opponent's turn"
+            )}
+          </div>
+        )}
+      </div>
+
+      {isMyTurn && hasMoved && (
+        <button 
+          className="end-turn-button" 
+          onClick={handleEndTurn}
+        >
+          End Turn
+        </button>
+      )}
     </div>
   );
 };

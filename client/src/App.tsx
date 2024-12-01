@@ -12,6 +12,7 @@ interface Game {
   game_id: string;
   players: Record<string, Player>;
   is_full: boolean;
+  player_count: number;
 }
 
 function App() {
@@ -49,7 +50,7 @@ function App() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('http://localhost:8000/game/create', {
+      const response = await fetch('http://localhost:8000/game', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -102,7 +103,7 @@ function App() {
                 <li key={game.game_id} className="game-item">
                   <span>Game {game.game_id.slice(0, 8)}...</span>
                   <span className="player-count">
-                    Players: {Object.keys(game.players).length}/2
+                    Players: {game.player_count}/2
                   </span>
                   {!game.is_full && (
                     <button onClick={() => setGameId(game.game_id)}>

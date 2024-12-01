@@ -192,10 +192,25 @@ class GameState(BaseModel):
                 for player_id, player in self.players.items()
             },
             "current_turn": self.current_turn,
-            "status": self.status.value if isinstance(self.status, GameStatus) else self.status,
+            "is_full": self.is_full(),
+            "status": self.status.value,  # Convert enum to string
             "grid_size": self.grid_size,
-            "obstacles": list(self.obstacles),  # Convert set to list for JSON serialization
-            "is_full": self.is_full()  # Add is_full field
+            "obstacles": list(self.obstacles)  # Convert set to list for JSON
         }
-        logger.info(f"Game status obstacles: {status_dict['obstacles']}")
+        logger.info(f"Game status - current_turn: {self.current_turn}, players: {list(self.players.keys())}")
         return status_dict
+
+    def set_next_turn(self):
+        """Set the turn to the next player."""
+        if not self.players:
+            return
+
+        players = list(self.players.keys())
+        if not self.current_turn:
+            self.current_turn = players[0]
+            return
+
+        current_index = players.index(self.current_turn)
+        next_index = (current_index + 1) % len(players)
+        self.current_turn = players[next_index]
+        logger.info(f"Turn changed from {players[current_index]} to {self.current_turn}")
