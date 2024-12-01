@@ -66,36 +66,56 @@ async def get_game(game_id: str):
 
 @app.websocket("/ws/game/{game_id}/player/{player_id}")
 async def websocket_endpoint(websocket: WebSocket, game_id: str, player_id: str):
-    # Create game if it doesn't exist
-    if game_id not in manager.games:
-        game = GameState(game_id=game_id)
-        manager.games[game_id] = game
-
-    game = manager.games[game_id]
-    
-    # Add player if not already in game
-    if player_id not in game.players:
-        if not game.add_player(player_id):
-            await websocket.close(code=4000, reason="Game is full")
-            return
-
     try:
-        await manager.connect(websocket, game_id, player_id)
-        logger.info(f"Player {player_id} connected to game {game_id}")
+        # Create game if it doesn't exist
+        if game_id not in manager.games:
+            game = GameState(game_id=game_id)
+            manager.games[game_id] = game
+
+        game = manager.games[game_id]
         
-        while True:
-            try:
-                data = await websocket.receive_json()
-                logger.info(f"Received message from player {player_id}: {data}")
-                await manager.handle_message(websocket, game_id, player_id, data)
-            except Exception as e:
-                logger.error(f"Error handling message: {e}")
-                break
-                
+        # Add player if not already in game
+        if player_id not in game.players:
+            if not game.add_player(player_id):
+                logger.error(f"Failed to add player {player_id} to game {game_id}")
+                await websocket.close(code=4000, reason="Game is full")
+                return
+
+        try:
+            await manager.connect(websocket, game_id, player_id)
+            logger.info(f"Player {player_id} connected to game {game_id}")
+            
+            while True:
+                try:
+                    data = await websocket.receive_json()
+                    logger.info(f"Received message from player {player_id}: {data}")
+                    await manager.handle_message(websocket, game_id, player_id, data)
+                except Exception as e:
+                    if isinstance(e, RuntimeError) and str(e) == "websocket.receive_json() called outside of a websocket connection":
+                        logger.info(f"WebSocket connection closed for player {player_id}")
+                        break
+                    logger.error(f"Error handling message from player {player_id}: {str(e)}")
+                    if websocket.client_state.CONNECTED:
+                        await websocket.send_json({
+                            "type": "error",
+                            "payload": {"message": "Error processing message"}
+                        })
+                    
+        except Exception as e:
+            logger.error(f"WebSocket connection error for player {player_id}: {str(e)}")
+            raise
+            
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"Unhandled WebSocket error for player {player_id}: {str(e)}")
     finally:
+        logger.info(f"Cleaning up connection for player {player_id}")
         manager.disconnect(game_id, player_id)
+        # Try to close the websocket if it's still open
+        try:
+            if not websocket.client_state.DISCONNECTED:
+                await websocket.close()
+        except Exception as e:
+            logger.error(f"Error closing websocket for player {player_id}: {str(e)}")
         logger.info(f"Player {player_id} disconnected from game {game_id}")
 
 if __name__ == "__main__":

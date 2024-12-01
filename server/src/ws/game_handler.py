@@ -12,22 +12,38 @@ class ConnectionManager:
         self.games: Dict[str, GameState] = {}
 
     async def connect(self, websocket: WebSocket, game_id: str, player_id: str):
-        await websocket.accept()
-        if game_id not in self.active_connections:
-            self.active_connections[game_id] = {}
-        self.active_connections[game_id][player_id] = websocket
+        try:
+            await websocket.accept()
+            if game_id not in self.active_connections:
+                self.active_connections[game_id] = {}
+            self.active_connections[game_id][player_id] = websocket
 
-        if game_id in self.games:
-            game = self.games[game_id]
-            game.update_player_connection(player_id, True)
-            await self.broadcast_game_state(game_id)
-
-    def disconnect(self, game_id: str, player_id: str):
-        if game_id in self.active_connections:
-            self.active_connections[game_id].pop(player_id, None)
             if game_id in self.games:
                 game = self.games[game_id]
-                game.update_player_connection(player_id, False)
+                game.update_player_connection(player_id, True)
+                await self.broadcast_game_state(game_id)
+        except Exception as e:
+            logger.error(f"Error connecting player {player_id} to game {game_id}: {str(e)}")
+            raise
+
+    def disconnect(self, game_id: str, player_id: str):
+        try:
+            if game_id in self.active_connections:
+                # Remove the connection
+                self.active_connections[game_id].pop(player_id, None)
+                
+                # If this was the last player, clean up the game
+                if not self.active_connections[game_id]:
+                    self.active_connections.pop(game_id, None)
+                    # Optionally, you might want to remove the game if it's empty
+                    # self.games.pop(game_id, None)
+                
+                # Update player connection status
+                if game_id in self.games:
+                    game = self.games[game_id]
+                    game.update_player_connection(player_id, False)
+        except Exception as e:
+            logger.error(f"Error disconnecting player {player_id} from game {game_id}: {str(e)}")
 
     async def broadcast_game_state(self, game_id: str):
         if game_id not in self.games:
@@ -83,18 +99,14 @@ class ConnectionManager:
 
             logger.info(f"Starting game {game_id}")
             game.status = GameStatus.IN_PROGRESS
-            game.current_turn = next(iter(game.players.keys()))  # First player starts
-            
-            if not game.initialize_heroes():
-                await self.send_error(websocket, "Failed to initialize heroes")
-                game.status = GameStatus.LOBBY  # Reset game status
-                return
-
+            game.initialize_heroes()
+            game.generate_obstacles()
+            game.set_next_turn()
             await self.broadcast_game_state(game_id)
 
         elif message_type == "move_hero":
             if game.status != GameStatus.IN_PROGRESS:
-                await self.send_error(websocket, "Game hasn't started")
+                await self.send_error(websocket, "Game is not in progress")
                 return
 
             if game.current_turn != player_id:
@@ -103,16 +115,23 @@ class ConnectionManager:
 
             payload = data.get("payload", {})
             hero_id = payload.get("hero_id")
-            position = payload.get("position")
+            new_position = payload.get("position")
 
-            if not hero_id or not position:
-                await self.send_error(websocket, "Invalid move data")
+            if not hero_id or not new_position:
+                await self.send_error(websocket, "Invalid move request")
+                return
+
+            # Convert position dict to Position object
+            try:
+                new_pos = Position(**new_position)
+            except Exception as e:
+                await self.send_error(websocket, "Invalid position format")
                 return
 
             # Find the hero
             hero = None
-            for p in game.players.values():
-                for h in p.heroes:
+            for player in game.players.values():
+                for h in player.heroes:
                     if h.id == hero_id:
                         hero = h
                         break
@@ -127,50 +146,40 @@ class ConnectionManager:
                 await self.send_error(websocket, "Not your hero")
                 return
 
-            # Calculate Manhattan distance
-            dx = abs(hero.position.x - position["x"])
-            dy = abs(hero.position.y - position["y"])
-            distance = dx + dy
-
-            if distance > hero.movement_points:
-                await self.send_error(websocket, "Move too far")
+            # Check if the move is valid
+            if not hero.move_to(new_pos):
+                await self.send_error(websocket, "Invalid move")
                 return
 
-            # Check if destination is occupied
-            if game.is_position_occupied(position["x"], position["y"]):
-                await self.send_error(websocket, "Position occupied")
-                return
-
-            # Check if destination is an obstacle
-            if f"{position['x']},{position['y']}" in game.obstacles:
-                await self.send_error(websocket, "Cannot move to obstacle")
-                return
-
-            # Move the hero
-            for player in game.players.values():
-                for hero in player.heroes:
-                    if hero.id == hero_id:
-                        hero.position = Position(x=position["x"], y=position["y"])
-                        break
-            
             await self.broadcast_game_state(game_id)
 
-        elif message_type == "end_turn":
+        elif message_type == "undo_move":
             if game.status != GameStatus.IN_PROGRESS:
-                await self.send_error(websocket, "Game hasn't started")
+                await self.send_error(websocket, "Game is not in progress")
                 return
 
             if game.current_turn != player_id:
                 await self.send_error(websocket, "Not your turn")
                 return
 
-            logger.info(f"Processing end turn for player {player_id}")
-            logger.info(f"Game state before turn change - current_turn: {game.current_turn}, players: {list(game.players.keys())}")
+            # Find all heroes owned by the player and undo their moves
+            for player in game.players.values():
+                if player.player_id == player_id:
+                    for hero in player.heroes:
+                        hero.undo_move()
 
-            # Set next turn using the game state method
+            await self.broadcast_game_state(game_id)
+
+        elif message_type == "end_turn":
+            if game.status != GameStatus.IN_PROGRESS:
+                await self.send_error(websocket, "Game is not in progress")
+                return
+
+            if game.current_turn != player_id:
+                await self.send_error(websocket, "Not your turn")
+                return
+
             game.set_next_turn()
-
-            logger.info(f"Game state after turn change - current_turn: {game.current_turn}, players: {list(game.players.keys())}")
             await self.broadcast_game_state(game_id)
 
 manager = ConnectionManager()

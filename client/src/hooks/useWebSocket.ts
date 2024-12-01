@@ -42,21 +42,34 @@ export const useWebSocket = (
         console.log('WebSocket disconnected:', event.code, event.reason);
         setIsConnected(false);
 
+        // Don't reconnect if the close was intentional (code 1000) or the game is full (code 4000)
+        if (event.code === 1000 || event.code === 4000) {
+          console.log('WebSocket closed intentionally, not reconnecting');
+          return;
+        }
+
         // Attempt to reconnect if not intentionally closed
         if (reconnectAttempts.current < maxReconnectAttempts) {
           console.log(`Reconnecting... Attempt ${reconnectAttempts.current + 1}/${maxReconnectAttempts}`);
           reconnectAttempts.current += 1;
-          setTimeout(connect, 1000 * reconnectAttempts.current);  // Exponential backoff
+          setTimeout(connect, 1000 * Math.pow(2, reconnectAttempts.current));  // Exponential backoff
+        } else {
+          console.log('Max reconnection attempts reached');
         }
       };
 
       ws.current.onmessage = (event) => {
-        console.log('WebSocket message received:', event.data);
-        onMessageRef.current(event);
+        try {
+          console.log('WebSocket message received:', event.data);
+          onMessageRef.current(event);
+        } catch (error) {
+          console.error('Error processing WebSocket message:', error);
+        }
       };
       
       ws.current.onerror = (error) => {
         console.error('WebSocket error:', error);
+        // Don't set isConnected to false here, let onclose handle the state
       };
     } catch (error) {
       console.error('Error creating WebSocket connection:', error);
@@ -77,10 +90,11 @@ export const useWebSocket = (
     };
   }, [connect]);
 
-  const send = useCallback((data: string) => {
+  const send = useCallback((data: any) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
-      console.log('Sending WebSocket message:', data);
-      ws.current.send(data);
+      const message = typeof data === 'string' ? data : JSON.stringify(data);
+      console.log('Sending WebSocket message:', message);
+      ws.current.send(message);
     } else {
       console.error('WebSocket is not open. Current state:', ws.current?.readyState);
     }

@@ -18,12 +18,46 @@ class Position(BaseModel):
 class Hero(BaseModel):
     id: str
     position: Position
+    start_position: Optional[Position] = None  # Track starting position for undo
     owner_id: str
     current_hp: int = 10
     max_hp: int = 10
     damage: int = 5
     movement_points: int = 5
     armor: int = 3
+    remaining_movement: int = 5  # Track remaining movement for the turn
+
+    def reset_movement(self):
+        """Reset movement points at the start of turn"""
+        self.remaining_movement = self.movement_points
+        self.start_position = Position(x=self.position.x, y=self.position.y)  # Store starting position
+
+    def can_move_to(self, new_position: Position) -> bool:
+        """Check if hero can move to new position based on remaining points"""
+        distance = abs(new_position.x - self.position.x) + abs(new_position.y - self.position.y)
+        return distance <= self.remaining_movement
+
+    def move_to(self, new_position: Position) -> bool:
+        """Move hero to new position and update remaining movement points"""
+        if not self.can_move_to(new_position):
+            return False
+            
+        if not self.start_position:  # Store starting position on first move of the turn
+            self.start_position = Position(x=self.position.x, y=self.position.y)
+            
+        distance = abs(new_position.x - self.position.x) + abs(new_position.y - self.position.y)
+        self.remaining_movement -= distance
+        self.position = new_position
+        return True
+
+    def undo_move(self) -> bool:
+        """Undo movement and restore movement points"""
+        if not self.start_position:
+            return False
+        
+        self.position = Position(x=self.start_position.x, y=self.start_position.y)
+        self.remaining_movement = self.movement_points
+        return True
 
 class PlayerState(BaseModel):
     player_id: str
@@ -213,4 +247,9 @@ class GameState(BaseModel):
         current_index = players.index(self.current_turn)
         next_index = (current_index + 1) % len(players)
         self.current_turn = players[next_index]
+
+        # Reset movement points for next player's heroes
+        for hero in self.players[self.current_turn].heroes:
+            hero.reset_movement()
+
         logger.info(f"Turn changed from {players[current_index]} to {self.current_turn}")
