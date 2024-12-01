@@ -4,6 +4,7 @@ from enum import Enum
 import random
 import logging
 from collections import deque
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class Hero(BaseModel):
     movement_points: int = 5
     armor: int = 3
     abilities: List[Ability] = [PUNCH_ABILITY]
+    name: str  # Single letter A-Z
 
     def reset_movement(self):
         """Reset movement points at the start of turn"""
@@ -145,6 +147,33 @@ class GameState(BaseModel):
     heroes_per_player: int = 4
     obstacles: Set[str] = set()
     moved_hero_id: Optional[str] = None
+    _hero_letter_counter: int = 0  # Internal counter for assigning hero letters
+
+    def create_hero(self, owner_id: str, position: Position) -> Hero:
+        """Create a new hero with a unique letter name"""
+        hero_letter = chr(65 + self._hero_letter_counter)  # 65 is ASCII for 'A'
+        self._hero_letter_counter = (self._hero_letter_counter + 1) % 26  # Wrap around at Z
+        
+        return Hero(
+            id=f"{owner_id}_hero_{uuid.uuid4()}",
+            position=position,
+            owner_id=owner_id,
+            name=hero_letter,
+            abilities=[
+                Ability(
+                    id="heal_1",
+                    name="Heal",
+                    range=3,
+                    effect=Effect(type=EffectType.HEAL, amount=20)
+                ),
+                Ability(
+                    id="damage_1",
+                    name="Attack",
+                    range=2,
+                    effect=Effect(type=EffectType.DAMAGE, amount=20)
+                )
+            ]
+        )
 
     def add_player(self, player_id: str) -> bool:
         """Add a player to the game if there's room. Returns True if successful."""
@@ -182,11 +211,7 @@ class GameState(BaseModel):
                     pos_key = f"{x},{y}"
                     
                     if pos_key not in self.obstacles and not self.is_position_occupied(x, y):
-                        hero = Hero(
-                            id=f"{player_id}_hero_{heroes_placed}",
-                            position=Position(x=x, y=y),
-                            owner_id=player_id
-                        )
+                        hero = self.create_hero(player_id, Position(x=x, y=y))
                         player.heroes.append(hero)
                         heroes_placed += 1
                     

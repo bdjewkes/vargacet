@@ -30,6 +30,7 @@ interface Hero {
   movement_points: number;
   armor: number;
   abilities: Ability[];
+  name: string;
 }
 
 interface Player {
@@ -348,7 +349,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
         </div>
         {selectedHero && (
           <div className="hero-info">
-            Selected Hero: {selectedHero.id} (Movement: {selectedHero.movement_points})
+            Selected Hero: {selectedHero.name} (Movement: {selectedHero.movement_points})
           </div>
         )}
       </div>
@@ -371,13 +372,21 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
                     onMouseLeave={() => setHoveredHero(null)}
                   >
                     {cell.hero && (
-                      <div
-                        className={`hero${
-                          cell.isCurrentPlayer ? ' current-player' : ''
-                        }`}
+                      <div 
+                        className={`hero ${cell.hero.owner_id === playerId ? 'my-hero' : 'enemy-hero'} ${isSelected ? 'selected' : ''}`}
+                        onClick={() => handleCellClick(x, y)}
+                        onMouseEnter={() => setHoveredHero(cell.hero)}
+                        onMouseLeave={() => setHoveredHero(null)}
                       >
-                        H
-                        <div className="hero-hp">{cell.hero.current_hp}/{cell.hero.max_hp}</div>
+                        <div className="hero-letter">{cell.hero.name}</div>
+                        <div className="hero-grid-hp">
+                          <div 
+                            className="hero-grid-hp-fill" 
+                            style={{ 
+                              width: `${(cell.hero.current_hp / cell.hero.max_hp) * 100}%` 
+                            }}
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
@@ -387,31 +396,65 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
           ))}
         </div>
         <div className="side-panel">
-          {hoveredHero ? (
-            <div className="hero-stats">
-              <h3>Hero Stats</h3>
-              <p>Owner: {gameState.players[hoveredHero.owner_id]?.name}</p>
-              <p>HP: {hoveredHero.current_hp}/{hoveredHero.max_hp}</p>
-              <p>Damage: {hoveredHero.damage}</p>
-              <p>Armor: {hoveredHero.armor}</p>
-              <p>Movement: {hoveredHero.movement_points}</p>
-            </div>
-          ) : selectedHero ? (
-            <div className="hero-abilities">
-              <h3>Abilities</h3>
-              <div className="ability-list">
-                {selectedHero.abilities.map(ability => (
-                  <button
-                    key={ability.id}
-                    className={`ability-button${selectedAbility?.id === ability.id ? ' selected' : ''}`}
-                    onClick={() => setSelectedAbility(selectedAbility?.id === ability.id ? null : ability)}
-                  >
-                    {ability.name}
-                    <span className="ability-effect">
-                      ({ability.effect.type} {ability.effect.amount})
+          {(hoveredHero || selectedHero) ? (
+            <div className="hero-info-panel">
+              <div className="hero-stats">
+                <h3>Hero {hoveredHero?.name || selectedHero!.name}</h3>
+                <div className="stat-row">
+                  <span>Owner:</span>
+                  <span>{gameState.players[hoveredHero?.owner_id || selectedHero!.owner_id]?.name}</span>
+                </div>
+                <div className="stat-row">
+                  <span>HP:</span>
+                  <div className="hp-bar">
+                    <div 
+                      className="hp-fill" 
+                      style={{ 
+                        width: `${((hoveredHero?.current_hp || selectedHero!.current_hp) / 
+                                 (hoveredHero?.max_hp || selectedHero!.max_hp)) * 100}%` 
+                      }}
+                    />
+                    <span className="hp-text">
+                      {hoveredHero?.current_hp || selectedHero!.current_hp}/
+                      {hoveredHero?.max_hp || selectedHero!.max_hp}
                     </span>
-                  </button>
-                ))}
+                  </div>
+                </div>
+                <div className="stat-row">
+                  <span>Damage:</span>
+                  <span>{hoveredHero?.damage || selectedHero!.damage}</span>
+                </div>
+                <div className="stat-row">
+                  <span>Armor:</span>
+                  <span>{hoveredHero?.armor || selectedHero!.armor}</span>
+                </div>
+                <div className="stat-row">
+                  <span>Movement:</span>
+                  <span className="movement-remaining">{hoveredHero?.movement_points || selectedHero!.movement_points}</span>
+                </div>
+              </div>
+              <div className="hero-abilities">
+                <h3>Abilities</h3>
+                <div className="ability-list">
+                  {(hoveredHero || selectedHero)!.abilities.map(ability => (
+                    <button
+                      key={ability.id}
+                      className={`ability-button${
+                        selectedHero && selectedAbility?.id === ability.id ? ' selected' : ''
+                      }${!selectedHero || hoveredHero ? ' disabled' : ''}`}
+                      onClick={() => {
+                        if (selectedHero && !hoveredHero) {
+                          setSelectedAbility(selectedAbility?.id === ability.id ? null : ability);
+                        }
+                      }}
+                    >
+                      {ability.name}
+                      <span className="ability-effect">
+                        ({ability.effect.type} {ability.effect.amount})
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : (
@@ -421,8 +464,8 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
           )}
           {isMyTurn && (
             <div className="action-buttons">
-              <button onClick={handleUndoMove}>Undo Move</button>
-              <button onClick={handleEndTurn}>End Turn</button>
+              <button className="undo-button" onClick={handleUndoMove}>Undo Move</button>
+              <button className="end-turn-button" onClick={handleEndTurn}>End Turn</button>
             </div>
           )}
         </div>
