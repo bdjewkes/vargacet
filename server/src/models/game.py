@@ -164,14 +164,20 @@ class GameState(BaseModel):
                     id="heal_1",
                     name="Heal",
                     range=3,
-                    effect=Effect(type=EffectType.HEAL, amount=20)
+                    effect=Effect(type=EffectType.HEAL, amount=5)
                 ),
                 Ability(
                     id="damage_1",
-                    name="Attack",
-                    range=2,
-                    effect=Effect(type=EffectType.DAMAGE, amount=20)
-                )
+                    name="Punch",
+                    range=1,
+                    effect=Effect(type=EffectType.DAMAGE, amount=6)
+                ),
+                Ability(
+                    id="ranged_1",
+                    name="Shortbow",
+                    range=3,
+                    effect=Effect(type=EffectType.DAMAGE, amount=4)
+                ),
             ]
         )
 
