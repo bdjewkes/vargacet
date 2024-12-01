@@ -388,6 +388,9 @@ class GameState(BaseModel):
 
         # Save current game state before changing turn
         self.save_turn_state()
+
+        # clear the moved hero ID
+        self.moved_hero_id = None
             
         # Get list of player IDs
         player_ids = list(self.players.keys())
@@ -618,8 +621,8 @@ class GameState(BaseModel):
         if hero.owner_id != self.current_turn:
             return False
             
-        # Check if hero has already moved
-        if self.moved_hero_id == hero_id:
+        # Check if another hero has already moved (only one hero can move per turn)
+        if self.moved_hero_id and self.moved_hero_id != hero_id:
             return False
             
         # Try to move the hero
