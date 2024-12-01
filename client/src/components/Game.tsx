@@ -17,6 +17,7 @@ interface Ability {
   name: string;
   range: number;
   effect: Effect;
+  action_cost: number; // Add action_cost property
 }
 
 interface Hero {
@@ -429,24 +430,37 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
             <div className="hero-abilities">
               <h3>Abilities</h3>
               <div className="ability-list">
-                {(hoveredHero || selectedHero)?.abilities.map(ability => (
-                  <button
-                    key={ability.id}
-                    className={`ability-button${
-                      selectedHero && selectedAbility?.id === ability.id ? ' selected' : ''
-                    }${!selectedHero || hoveredHero ? ' disabled' : ''}`}
-                    onClick={() => {
-                      if (selectedHero && !hoveredHero) {
-                        setSelectedAbility(selectedAbility?.id === ability.id ? null : ability);
-                      }
-                    }}
-                  >
-                    {ability.name}
-                    <span className="ability-effect">
-                      ({ability.effect.type} {ability.effect.amount})
-                    </span>
-                  </button>
-                ))}
+                {(hoveredHero || selectedHero)?.abilities.map(ability => {
+                  const hero = selectedHero || hoveredHero;
+                  const disabled = !selectedHero || hoveredHero || 
+                    (hero && hero.current_action_points < ability.action_cost);
+                  
+                  return (
+                    <button
+                      key={ability.id}
+                      className={`ability-button${
+                        selectedHero && selectedAbility?.id === ability.id ? ' selected' : ''
+                      }${disabled ? ' disabled' : ''}`}
+                      onClick={() => {
+                        if (!disabled) {
+                          setSelectedAbility(selectedAbility?.id === ability.id ? null : ability);
+                        }
+                      }}
+                    >
+                      <div className="ability-info">
+                        <span>{ability.name}</span>
+                        <span className="ability-effect">
+                          ({ability.effect.type} {ability.effect.amount})
+                        </span>
+                      </div>
+                      <div className="ability-cost">
+                        {Array.from({ length: ability.action_cost }).map((_, i) => (
+                          <div key={i} className="action-point active" />
+                        ))}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -319,7 +319,7 @@
   font-weight: 500;
 }
 
-.ability-button:hover {
+.ability-button:hover:not(.disabled) {
   background: #e9ecef;
   border-color: #ced4da;
 }
@@ -331,10 +331,11 @@
 }
 
 .ability-button.disabled {
-  opacity: 0.7;
-  cursor: default;
+  opacity: 0.5;
+  cursor: not-allowed;
   background: #f0f0f0;
   border-color: #ddd;
+  color: #999;
 }
 
 .ability-button.disabled:hover {
@@ -342,10 +343,26 @@
   border-color: #ddd;
 }
 
+.ability-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .ability-effect {
   font-size: 0.9em;
   color: #666;
   font-weight: normal;
+}
+
+.ability-cost {
+  display: flex;
+  gap: 2px;
+}
+
+.ability-cost .action-point {
+  width: 8px;
+  height: 8px;
 }
 
 .action-points {
