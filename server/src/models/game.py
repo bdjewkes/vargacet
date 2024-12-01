@@ -177,35 +177,16 @@ class GameState(BaseModel):
 
     def add_player(self, player_id: str) -> bool:
         """Add a player to the game if there's room. Returns True if successful."""
+        if player_id in self.players:
+            return True
+
         if len(self.players) >= 2:
             return False
 
-        # Create initial heroes for the player
-        heroes = []
-        heroes_placed = 0
-        
-        if len(self.players) == 0:
-            # First player's heroes at top
-            heroes.append(self.create_hero(player_id, Position(x=1, y=0)))
-            heroes.append(self.create_hero(player_id, Position(x=3, y=0)))
-            heroes.append(self.create_hero(player_id, Position(x=5, y=0)))
-            heroes.append(self.create_hero(player_id, Position(x=7, y=0)))
-        else:
-            # Second player's heroes at bottom
-            heroes.append(self.create_hero(player_id, Position(x=1, y=9)))
-            heroes.append(self.create_hero(player_id, Position(x=3, y=9)))
-            heroes.append(self.create_hero(player_id, Position(x=5, y=9)))
-            heroes.append(self.create_hero(player_id, Position(x=7, y=9)))
-
-        # Add the player
         self.players[player_id] = PlayerState(
             player_id=player_id,
-            heroes=heroes
+            heroes=[]
         )
-
-        # If this was the second player, start the game
-        if len(self.players) == 2:
-            self.start_game()
             
         return True
 
