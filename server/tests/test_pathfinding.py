@@ -155,5 +155,44 @@ class TestPathfinding(unittest.TestCase):
             "Movement points should be greater after reset than after move"
         )
 
+    def test_move_to_2_3(self):
+        """Test that a hero can move from (0,0) to (2,3) with 5 movement points"""
+        # Get the hero
+        hero = self.game.players["p1"].heroes[0]
+        hero.movement_points = 5  # Set movement points to 5
+        
+        # Try to move to (2,3)
+        target = Position(x=2, y=3)
+        path = self.game.find_path(hero.position, target, max_distance=5)
+        
+        # Path should exist and be exactly 5 steps:
+        # (0,0) -> (1,0) -> (2,0) -> (2,1) -> (2,2) -> (2,3)
+        self.assertIsNotNone(path)
+        self.assertEqual(len(path), 6)  # 6 positions including start and end
+        
+        # Verify path is correct with only orthogonal moves
+        expected_path = [
+            Position(x=0, y=0),  # Start
+            Position(x=1, y=0),  # Right
+            Position(x=2, y=0),  # Right
+            Position(x=2, y=1),  # Up
+            Position(x=2, y=2),  # Up
+            Position(x=2, y=3),  # Up
+        ]
+        self.assertEqual(len(path), len(expected_path))
+        for actual, expected in zip(path, expected_path):
+            self.assertEqual(actual.x, expected.x)
+            self.assertEqual(actual.y, expected.y)
+        
+        # Verify we can actually make the move
+        success = hero.move_to(target, self.game)
+        self.assertTrue(success)
+        self.assertEqual(hero.position.x, 2)
+        self.assertEqual(hero.position.y, 3)
+        
+        # Verify movement points were consumed correctly
+        expected_cost = len(path) - 1  # 5 steps
+        self.assertEqual(hero.movement_points, 5 - expected_cost)
+
 if __name__ == '__main__':
     unittest.main()

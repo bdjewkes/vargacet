@@ -73,11 +73,6 @@ class Hero(BaseModel):
         if target_pos_str in game_state.obstacles:
             return False
 
-        dx = abs(new_position.x - self.position.x)
-        dy = abs(new_position.y - self.position.y)
-        if dx > 0 and dy > 0:
-            return False
-
         path = game_state.find_path(self.position, new_position, self.movement_points)
         if not path:
             return False
@@ -268,12 +263,14 @@ class GameState(BaseModel):
         if target_pos_str in self.obstacles:
             return None
 
-        queue = deque([(start.x, start.y, [Position(x=start.x, y=start.y)], 0)])
+        # Priority queue: [manhattan_distance, x_distance, y_distance, x, y, path, distance]
+        queue = [(abs(end.x - start.x) + abs(end.y - start.y), abs(end.x - start.x), abs(end.y - start.y),
+                 start.x, start.y, [Position(x=start.x, y=start.y)], 0)]
         visited = set()
-        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]  
-
+        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]  # All orthogonal directions
+        
         while queue:
-            x, y, path, distance = queue.popleft()
+            _, _, _, x, y, path, distance = queue.pop(0)
             pos_key = f"{x},{y}"
 
             if x == end.x and y == end.y:
@@ -284,6 +281,7 @@ class GameState(BaseModel):
 
             visited.add(pos_key)
 
+            # Try all orthogonal directions
             for dx, dy in directions:
                 new_x, new_y = x + dx, y + dy
                 new_key = f"{new_x},{new_y}"
@@ -292,7 +290,16 @@ class GameState(BaseModel):
                     self.is_valid_position(new_x, new_y) and
                     new_key not in self.obstacles):
                     new_path = path + [Position(x=new_x, y=new_y)]
-                    queue.append((new_x, new_y, new_path, distance + 1))
+                    manhattan_dist = abs(end.x - new_x) + abs(end.y - new_y)
+                    x_dist = abs(end.x - new_x)
+                    y_dist = abs(end.y - new_y)
+                    priority = (manhattan_dist, x_dist, y_dist)
+                    
+                    # Insert maintaining priority order
+                    i = 0
+                    while i < len(queue) and queue[i][0:3] <= priority:
+                        i += 1
+                    queue.insert(i, (*priority, new_x, new_y, new_path, distance + 1))
 
         return None
 

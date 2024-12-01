@@ -150,6 +150,10 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
     };
 
     const isOccupied = (x: number, y: number): boolean => {
+      // Don't count the selected hero's current position as occupied
+      if (selectedHero && x === selectedHero.position.x && y === selectedHero.position.y) {
+        return false;
+      }
       return Object.values(gameState.players)
         .flatMap(p => p.heroes)
         .some(h => h.position.x === x && h.position.y === y);
@@ -176,7 +180,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
 
         if (!visited.has(newKey) && 
             isValidPosition(newX, newY) && 
-            !isOccupied(newX, newY)) {
+            (!isOccupied(newX, newY) || (newX === endX && newY === endY))) {
           const newPath = [...path, { x: newX, y: newY }];
           queue.push([newX, newY, newPath, distance + 1]);
         }
@@ -193,13 +197,13 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
     const range = new Set<string>();
     const maxRange = selectedHero.movement_points;
 
-    // Try all positions within Manhattan distance + 1 to ensure we check all reachable squares
+    // Try all positions within Manhattan distance of the current position
     for (let y = 0; y < gameState.grid_size; y++) {
       for (let x = 0; x < gameState.grid_size; x++) {
         const distance = Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y);
         
-        // Check positions within range + 1 to catch all possible paths
-        if (distance <= maxRange + 1) {
+        // Only check positions within the hero's remaining movement range
+        if (distance <= maxRange) {
           // Check if there's a valid path to this position
           const path = findPath(
             selectedHero.position.x,
@@ -209,7 +213,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
             maxRange
           );
           
-          // Only add if path exists and its length (minus start position) is within movement points
+          // Add position if a valid path exists within movement points
           if (path && (path.length - 1) <= maxRange) {
             range.add(`${x},${y}`);
           }
@@ -221,7 +225,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
       const [x, y] = pos.split(',').map(Number);
       return { x, y };
     });
-  }, [selectedHero, gameState, isMyTurn]);
+  }, [selectedHero, gameState.grid_size, gameState.moved_hero_id, isMyTurn]);
 
   // Memoize the movement range calculation
   const moveRange = useMemo(() => calculateMoveRange(), [calculateMoveRange]);
@@ -284,8 +288,14 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
             position: clickedPosition
           }
         }));
+        // Keep the hero selected after movement
+        const updatedHero = Object.values(gameState.players)
+          .flatMap(p => p.heroes)
+          .find(h => h.id === selectedHero.id);
+        if (updatedHero) {
+          setSelectedHero(updatedHero);
+        }
       }
-      setSelectedHero(null);
     }
   };
 
@@ -310,6 +320,20 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
     setSelectedHero(null);
     // Note: We don't need to explicitly reset moved_hero_id here as it will come from the server's game state update
   };
+
+  // Update selected hero when game state changes
+  useEffect(() => {
+    if (selectedHero) {
+      // Find the updated hero in the new game state
+      const updatedHero = Object.values(gameState.players)
+        .flatMap(p => p.heroes)
+        .find(h => h.id === selectedHero.id);
+      
+      if (updatedHero) {
+        setSelectedHero(updatedHero);
+      }
+    }
+  }, [gameState, selectedHero]);
 
   // Reset state when turn changes
   useEffect(() => {
