@@ -1,0 +1,232 @@
+.game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+}
+
+.game-info {
+  margin-bottom: 20px;
+  text-align: center;
+  min-width: 200px;
+  padding: 10px;
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.turn-indicator {
+  font-size: 1.5em;
+  margin-bottom: 10px;
+}
+
+.players {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 10px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.status {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status.connected {
+  background-color: #4CAF50;
+}
+
+.status.disconnected {
+  background-color: #f44336;
+}
+
+.connection-status {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8em;
+}
+
+.connected {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.disconnected {
+  background-color: #f44336;
+  color: white;
+}
+
+.game-container {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+}
+
+.game-sidebar {
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.hero-stats {
+  background: #f5f5f5;
+  padding: 15px;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.hero-stats h3 {
+  margin: 0 0 15px 0;
+  color: #333;
+}
+
+.hero-stats-placeholder {
+  background: #f5f5f5;
+  padding: 15px;
+  border-radius: 4px;
+  color: #666;
+  text-align: center;
+  font-style: italic;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.hp-bar {
+  flex: 1;
+  height: 20px;
+  background: #e0e0e0;
+  border-radius: 10px;
+  margin-left: 10px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hp-fill {
+  height: 100%;
+  background: #4CAF50;
+  transition: width 0.3s ease;
+}
+
+.hp-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+}
+
+.game-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.grid-row {
+  display: flex;
+}
+
+.grid-cell {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+  position: relative;
+}
+
+.grid-cell.in-range {
+  background-color: rgba(76, 175, 80, 0.2);
+  border-color: #4CAF50;
+}
+
+.grid-cell.obstacle {
+  background-color: #4a4a4a;
+  border-color: #2d2d2d;
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
+}
+
+.grid-cell.obstacle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(45deg, #3d3d3d 25%, #4a4a4a 25%, #4a4a4a 50%, #3d3d3d 50%, #3d3d3d 75%, #4a4a4a 75%);
+  background-size: 8px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.hero {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.hero-player {
+  background-color: #4CAF50;
+}
+
+.hero-opponent {
+  background-color: #f44336;
+}
+
+.hero-hp-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background: #81C784;
+  transition: width 0.3s ease;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background-color: #ccc;
+  padding: 1px;
+  border: 1px solid #999;
+}
+
+.row {
+  display: flex;
+  gap: 1px;
+}
+
+.cell {
+  width: 30px;
+  height: 30px;
+  background-color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cell:hover {
+  background-color: #f0f0f0;
+}
