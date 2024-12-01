@@ -29,6 +29,8 @@ interface Hero {
   damage: number;
   movement_points: number;
   armor: number;
+  max_action_points: number;
+  current_action_points: number;
   abilities: Ability[];
   name: string;
 }
@@ -397,6 +399,17 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
                     {hoveredHero?.current_hp || selectedHero?.current_hp || 0}/
                     {hoveredHero?.max_hp || selectedHero?.max_hp || 0}
                   </span>
+                </div>
+              </div>
+              <div className="stat-row">
+                <span>AP:</span>
+                <div className="action-points">
+                  {Array.from({ length: hoveredHero?.max_action_points || selectedHero?.max_action_points || 0 }).map((_, i) => (
+                    <div 
+                      key={i} 
+                      className={`action-point ${i < (hoveredHero?.current_action_points || selectedHero?.current_action_points || 0) ? 'active' : ''}`}
+                    />
+                  ))}
                 </div>
               </div>
               <div className="stat-row">

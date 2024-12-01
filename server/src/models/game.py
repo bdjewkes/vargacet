@@ -234,7 +234,7 @@ class GameState(BaseModel):
 
     def generate_obstacles(self) -> None:
         """Generate a small number of random obstacles"""
-        num_obstacles = int(self.grid_size * self.grid_size * 0.15)  # 15% of grid squares
+        num_obstacles = int(self.grid_size * self.grid_size * 0.10)  # 15% of grid squares
         self.obstacles.clear()
         
         # Keep track of positions we want to keep clear for heroes
