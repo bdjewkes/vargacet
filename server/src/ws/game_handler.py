@@ -192,4 +192,51 @@ class ConnectionManager:
             game.set_next_turn()
             await self.broadcast_game_state(game_id)
 
+        elif message_type == "use_ability":
+            if game.status != GameStatus.IN_PROGRESS:
+                await self.send_error(websocket, "Game is not in progress")
+                return
+
+            if game.current_turn != player_id:
+                await self.send_error(websocket, "Not your turn")
+                return
+
+            payload = data.get("payload", {})
+            hero_id = payload.get("hero_id")
+            target_hero_id = payload.get("target_hero_id")
+            ability_id = payload.get("ability_id")
+
+            if not all([hero_id, target_hero_id, ability_id]):
+                await self.send_error(websocket, "Invalid ability request")
+                return
+
+            # Find the hero and target
+            hero = None
+            target_hero = None
+            for player in game.players.values():
+                for h in player.heroes:
+                    if h.id == hero_id:
+                        hero = h
+                    elif h.id == target_hero_id:
+                        target_hero = h
+                    if hero and target_hero:
+                        break
+                if hero and target_hero:
+                    break
+
+            if not hero or not target_hero:
+                await self.send_error(websocket, "Hero or target not found")
+                return
+
+            if hero.owner_id != player_id:
+                await self.send_error(websocket, "Not your hero")
+                return
+
+            # Use the ability
+            if not hero.use_ability(ability_id, target_hero):
+                await self.send_error(websocket, "Invalid ability use")
+                return
+
+            await self.broadcast_game_state(game_id)
+
 manager = ConnectionManager()

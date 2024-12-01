@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Literal
 from pydantic import BaseModel
 from enum import Enum
 import random
@@ -15,6 +15,35 @@ class Position(BaseModel):
     x: int
     y: int
 
+class EffectType(str, Enum):
+    HEAL = "heal"
+    DAMAGE = "damage"
+
+class Effect(BaseModel):
+    type: EffectType
+    amount: int
+
+class Ability(BaseModel):
+    id: str
+    name: str
+    range: int
+    effect: Effect
+
+# Define standard abilities
+PUNCH_ABILITY = Ability(
+    id="punch",
+    name="Punch",
+    range=1,
+    effect=Effect(type=EffectType.DAMAGE, amount=1)
+)
+
+BANDAGE_ABILITY = Ability(
+    id="bandage",
+    name="Bandage",
+    range=1,
+    effect=Effect(type=EffectType.HEAL, amount=2)
+)
+
 class Hero(BaseModel):
     id: str
     position: Position
@@ -26,6 +55,7 @@ class Hero(BaseModel):
     movement_points: int = 5
     armor: int = 3
     remaining_movement: int = 5  # Track remaining movement for the turn
+    abilities: List[Ability] = [PUNCH_ABILITY]  # Default ability
 
     def reset_movement(self):
         """Reset movement points at the start of turn"""
@@ -57,6 +87,26 @@ class Hero(BaseModel):
         
         self.position = Position(x=self.start_position.x, y=self.start_position.y)
         self.remaining_movement = self.movement_points
+        return True
+
+    def use_ability(self, ability_id: str, target: 'Hero') -> bool:
+        """Use an ability on a target hero"""
+        # Find the ability
+        ability = next((a for a in self.abilities if a.id == ability_id), None)
+        if not ability:
+            return False
+
+        # Check range
+        distance = abs(self.position.x - target.position.x) + abs(self.position.y - target.position.y)
+        if distance > ability.range:
+            return False
+
+        # Apply effect
+        if ability.effect.type == EffectType.DAMAGE:
+            target.current_hp = max(0, target.current_hp - ability.effect.amount)
+        elif ability.effect.type == EffectType.HEAL:
+            target.current_hp = min(target.max_hp, target.current_hp + ability.effect.amount)
+
         return True
 
 class PlayerState(BaseModel):

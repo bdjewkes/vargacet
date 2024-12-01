@@ -7,6 +7,18 @@ interface Position {
   y: number;
 }
 
+interface Effect {
+  type: 'heal' | 'damage';
+  amount: number;
+}
+
+interface Ability {
+  id: string;
+  name: string;
+  range: number;
+  effect: Effect;
+}
+
 interface Hero {
   id: string;
   position: Position;
@@ -18,6 +30,7 @@ interface Hero {
   movement_points: number;
   armor: number;
   remaining_movement: number;
+  abilities: Ability[];
 }
 
 interface Player {
@@ -53,6 +66,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
   const [selectedHero, setSelectedHero] = useState<Hero | null>(null);
   const [hoveredHero, setHoveredHero] = useState<Hero | null>(null);
   const [hasMoved, setHasMoved] = useState(false);
+  const [selectedAbility, setSelectedAbility] = useState<Ability | null>(null);
   const [remainingMovement, setRemainingMovement] = useState<number>(0);
 
   const wsUrl = `ws://localhost:8000/ws/game/${gameState.game_id}/player/${playerId}`;
@@ -175,29 +189,55 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
     return range;
   }, [selectedHero, grid, gameState.grid_size, isMyTurn, hasMoved, remainingMovement]);
 
+  const handleUseAbility = (targetHero: Hero) => {
+    if (!selectedHero || !selectedAbility) return;
+
+    send(JSON.stringify({
+      type: 'use_ability',
+      payload: {
+        hero_id: selectedHero.id,
+        target_hero_id: targetHero.id,
+        ability_id: selectedAbility.id
+      }
+    }));
+
+    setSelectedAbility(null);
+    setSelectedHero(null);
+  };
+
   const handleCellClick = (x: number, y: number) => {
     if (!isMyTurn) return;
 
     const clickedPosition = { x, y };
     const posKey = `${x},${y}`;
 
-    // If there's a hero at the clicked position and it's the current player's hero
+    // Find if there's a hero at the clicked position
     const clickedHero = Object.values(gameState.players)
       .flatMap(p => p.heroes)
       .find(h => h.position.x === x && h.position.y === y);
 
+    // If we have a selected ability and click on a valid target
+    if (selectedAbility && selectedHero && clickedHero) {
+      const distance = Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y);
+      if (distance <= selectedAbility.range) {
+        handleUseAbility(clickedHero);
+        return;
+      }
+    }
+
+    // Handle hero selection and movement
     if (clickedHero?.owner_id === playerId) {
       // Don't allow selecting a different hero if one has already moved
       if (gameState.moved_hero_id && gameState.moved_hero_id !== clickedHero.id) {
         return;
       }
       setSelectedHero(clickedHero);
+      setSelectedAbility(null);
       return;
     }
 
-    // If a hero is selected and the clicked cell is within range
-    if (selectedHero) {
-      // Check if the move is valid
+    // Handle movement if no ability is selected
+    if (selectedHero && !selectedAbility) {
       const distance = Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y);
       if (distance <= selectedHero.remaining_movement) {
         send(JSON.stringify({
@@ -258,8 +298,11 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
           {grid.map((row, y) => (
             <div key={y} className="grid-row">
               {row.map((cell, x) => {
-                const isInRange = selectedHero && 
-                  Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y) <= selectedHero.remaining_movement;
+                const isInRange = selectedHero && (
+                  selectedAbility
+                    ? Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y) <= selectedAbility.range
+                    : Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y) <= selectedHero.remaining_movement
+                );
                 const isSelected = selectedHero?.position.x === x && selectedHero?.position.y === y;
                 
                 return (
@@ -279,6 +322,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
                         }`}
                       >
                         H
+                        <div className="hero-hp">{cell.hero.current_hp}/{cell.hero.max_hp}</div>
                       </div>
                     )}
                   </div>
@@ -297,21 +341,35 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
               <p>Armor: {hoveredHero.armor}</p>
               <p>Movement: {hoveredHero.movement_points}</p>
             </div>
+          ) : selectedHero ? (
+            <div className="hero-abilities">
+              <h3>Abilities</h3>
+              <div className="ability-list">
+                {selectedHero.abilities.map(ability => (
+                  <button
+                    key={ability.id}
+                    className={`ability-button${selectedAbility?.id === ability.id ? ' selected' : ''}`}
+                    onClick={() => setSelectedAbility(selectedAbility?.id === ability.id ? null : ability)}
+                  >
+                    {ability.name}
+                    <span className="ability-effect">
+                      ({ability.effect.type} {ability.effect.amount})
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           ) : (
             <div className="hero-stats-placeholder">
-              {isMyTurn ? "Select a hero to move" : "Opponent's turn"}
+              {isMyTurn ? "Select a hero to act" : "Opponent's turn"}
             </div>
           )}
           {isMyTurn && (
             <div className="action-buttons">
               {hasMoved && (
-                <button onClick={handleUndoMove} className="undo-button">
-                  Undo Move
-                </button>
+                <button onClick={handleUndoMove}>Undo Move</button>
               )}
-              <button onClick={handleEndTurn} className="end-turn-button">
-                End Turn
-              </button>
+              <button onClick={handleEndTurn}>End Turn</button>
             </div>
           )}
         </div>
