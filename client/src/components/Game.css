@@ -71,170 +71,158 @@
 
 .game-container {
   display: flex;
-  flex-direction: column;
   gap: 20px;
-  padding: 20px;
-  height: 100vh;
+  padding: 1rem;
+  position: relative;
 }
 
 .game-area {
   display: flex;
-  gap: 20px;
-  flex: 1;
-  min-height: 0;
+  flex-direction: column;
+}
+
+.game-status {
+  text-align: center;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.game-over-status {
+  color: #e74c3c;
+  font-size: 1.5rem;
+  padding: 1rem;
+  text-align: center;
+  background-color: rgba(231, 76, 60, 0.1);
+  border-radius: 8px;
+  margin: 1rem 0;
 }
 
 .game-grid {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(10, 50px);
+  grid-template-rows: repeat(10, 50px);
+  gap: 2px;
+  background-color: #2c3e50;
+  padding: 10px;
+  border-radius: 8px;
 }
 
 .side-panel {
-  width: 250px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 20px;
-  background-color: #f5f5f5;
-  border-radius: 4px;
-}
-
-.grid-row {
-  display: flex;
-}
-
-.grid-cell {
-  width: 40px;
-  height: 40px;
-  border: 1px solid #ccc;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  position: relative;
-  background-color: #fff;
-}
-
-.grid-cell:hover {
-  background-color: #f0f0f0;
-}
-
-.grid-cell.in-range {
-  background-color: rgba(33, 150, 243, 0.2);
-  border-color: #2196F3;
-}
-
-.grid-cell.in-range:hover {
-  background-color: rgba(33, 150, 243, 0.4);
-}
-
-.grid-cell.in-range.has-hero {
-  background-color: rgba(233, 30, 99, 0.2);
-}
-
-.grid-cell.selected {
-  background-color: rgba(33, 150, 243, 0.4);
-  border-color: #2196F3;
-}
-
-.grid-cell.obstacle {
-  background-color: #424242;
-  cursor: not-allowed;
-  border-color: #2d2d2d;
-  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
-}
-
-.grid-cell.obstacle::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 20px;
-  height: 20px;
-  background: linear-gradient(45deg, #3d3d3d 25%, #4a4a4a 25%, #4a4a4a 50%, #3d3d3d 50%, #3d3d3d 75%, #4a4a4a 75%);
-  background-size: 8px 8px;
-  border-radius: 4px;
-  pointer-events: none;
-}
-
-.hero {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  font-weight: bold;
-  font-size: 1.2em;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border-radius: 4px;
-  color: #fff;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-.hero-letter {
-  margin-bottom: 2px;
-}
-
-.hero-grid-hp {
-  position: absolute;
-  bottom: 2px;
-  left: 2px;
-  right: 2px;
-  height: 4px;
-  background-color: rgba(0, 0, 0, 0.3);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.hero-grid-hp-fill {
-  height: 100%;
-  background-color: #4caf50;
-  transition: width 0.3s ease;
-}
-
-.my-hero .hero-grid-hp-fill {
-  background-color: #81d4fa;
-}
-
-.enemy-hero .hero-grid-hp-fill {
-  background-color: #ff8a80;
-}
-
-.my-hero {
-  background-color: #2196f3;
-}
-
-.enemy-hero {
-  background-color: #f44336;
-}
-
-.hero.selected {
-  box-shadow: 0 0 10px #ffd700;
-  transform: scale(1.1);
-  z-index: 1;
-}
-
-.hero-hp {
-  font-size: 0.8em;
-  position: absolute;
-  bottom: 2px;
-  color: #fff;
-  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
-}
-
-.hero-info-panel {
+  min-width: 300px;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.hero-info-panel {
   background: white;
   padding: 1rem;
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  flex: 1;
+}
+
+.game-over-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.game-over-message {
+  background-color: white;
+  padding: 2rem;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.return-to-lobby-button {
+  margin-top: 1rem;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  background-color: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.return-to-lobby-button:hover {
+  background-color: #357abd;
+}
+
+.return-to-lobby-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.5);
+}
+
+.cell {
+  width: 50px;
+  height: 50px;
+  background-color: #ecf0f1;
+  border: 1px solid #bdc3c7;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.cell.obstacle {
+  background-color: #7f8c8d;
+  cursor: not-allowed;
+}
+
+.cell:hover:not(.obstacle) {
+  background-color: #e8e8e8;
+}
+
+.cell.selected {
+  background-color: #3498db;
+  color: white;
+}
+
+.cell.in-range:not(.obstacle) {
+  background-color: rgba(46, 204, 113, 0.7);
+}
+
+.cell.ability-target:not(.obstacle) {
+  background-color: rgba(231, 76, 60, 0.7);
+}
+
+.hero {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+  font-size: 1.2em;
+  z-index: 1;
+}
+
+.player-hero {
+  background-color: #3498db;
+  color: white;
+}
+
+.enemy-hero {
+  background-color: #e74c3c;
+  color: white;
 }
 
 .hero-stats {
@@ -274,32 +262,29 @@
 }
 
 .hp-bar {
-  flex: 1;
-  height: 20px;
-  background: rgba(231, 76, 60, 0.2);
-  border-radius: 10px;
-  margin-left: 1rem;
-  position: relative;
+  width: 100%;
+  height: 8px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
   overflow: hidden;
+  position: relative;
 }
 
 .hp-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
   height: 100%;
-  background: #e74c3c;
+  background-color: #4caf50;
   transition: width 0.3s ease;
 }
 
 .hp-text {
   position: absolute;
-  width: 100%;
-  text-align: center;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   color: #fff;
+  font-size: 10px;
   text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
-  font-size: 0.9em;
-  line-height: 20px;
+  white-space: nowrap;
 }
 
 .hero-abilities {
@@ -425,4 +410,23 @@
 .hero-opponent {
   background-color: #f44336;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.game-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.game-over {
+  font-size: 1.5em;
+  font-weight: bold;
+  color: #f44336;
+  text-align: center;
+  padding: 10px;
+  border-radius: 4px;
+  background-color: rgba(244, 67, 54, 0.1);
+  border: 1px solid #f44336;
 }

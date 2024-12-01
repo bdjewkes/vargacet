@@ -81,7 +81,11 @@ function App() {
   };
 
   if (gameId) {
-    return <GameLobby gameId={gameId} playerId={playerId} />;
+    return <GameLobby 
+      gameId={gameId} 
+      playerId={playerId}
+      onReturnToList={() => setGameId(null)}
+    />;
   }
 
   return (

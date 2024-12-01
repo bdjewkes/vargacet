@@ -14,16 +14,17 @@ interface GameState {
   players: Record<string, Player>;
   current_turn: string | null;
   is_full: boolean;
-  status: 'lobby' | 'in_progress' | 'finished';
+  status: 'lobby' | 'in_progress' | 'finished' | 'game_over';
   grid_size: number;
 }
 
 interface GameLobbyProps {
   gameId: string;
   playerId: string;
+  onReturnToList?: () => void;
 }
 
-export const GameLobby: React.FC<GameLobbyProps> = ({ gameId, playerId }) => {
+export const GameLobby: React.FC<GameLobbyProps> = ({ gameId, playerId, onReturnToList }) => {
   const [playerName, setPlayerName] = useState('');
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,12 +89,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ gameId, playerId }) => {
     return <div className="game-lobby">Loading game state...</div>;
   }
 
-  if (gameState.status === 'in_progress') {
+  if (gameState.status === 'in_progress' || gameState.status === 'game_over') {
     return (
       <Game 
         gameState={gameState} 
         playerId={playerId} 
         onGameStateUpdate={setGameState}
+        onReturnToLobby={onReturnToList}
       />
     );
   }

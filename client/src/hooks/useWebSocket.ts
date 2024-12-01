@@ -43,8 +43,9 @@ export const useWebSocket = (
         setIsConnected(false);
 
         // Don't reconnect if the close was intentional (code 1000) or the game is full (code 4000)
-        if (event.code === 1000 || event.code === 4000) {
-          console.log('WebSocket closed intentionally, not reconnecting');
+        // or if the game has ended (code 4001)
+        if (event.code === 1000 || event.code === 4000 || event.code === 4001) {
+          console.log('WebSocket closed intentionally or game ended, not reconnecting');
           return;
         }
 

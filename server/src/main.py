@@ -6,6 +6,7 @@ import logging
 from pydantic import BaseModel
 from .ws.game_handler import manager
 from .models.game import GameState
+from fastapi.websockets import WebSocketDisconnect
 
 app = FastAPI(title="Vargacet Game Server")
 
@@ -100,23 +101,17 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str, player_id: str)
                             "type": "error",
                             "payload": {"message": "Error processing message"}
                         })
-                    
-        except Exception as e:
-            logger.error(f"WebSocket connection error for player {player_id}: {str(e)}")
-            raise
+                        
+        except WebSocketDisconnect:
+            logger.info(f"Player {player_id} disconnected from game {game_id}")
+            manager.disconnect(game_id, player_id)
+            await manager.broadcast_game_state(game_id)
             
     except Exception as e:
         logger.error(f"Unhandled WebSocket error for player {player_id}: {str(e)}")
     finally:
         logger.info(f"Cleaning up connection for player {player_id}")
         manager.disconnect(game_id, player_id)
-        # Try to close the websocket if it's still open
-        try:
-            if not websocket.client_state.DISCONNECTED:
-                await websocket.close()
-        except Exception as e:
-            logger.error(f"Error closing websocket for player {player_id}: {str(e)}")
-        logger.info(f"Player {player_id} disconnected from game {game_id}")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

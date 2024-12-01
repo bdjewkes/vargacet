@@ -1,8 +1,8 @@
 import json
 import logging
-from typing import Dict, Set
+from typing import Dict, Set, List, Optional
 from fastapi import WebSocket
-from ..models.game import GameState, Position, GameStatus
+from ..models.game import GameState, Position, GameStatus, Hero
 
 logger = logging.getLogger(__name__)
 
@@ -45,20 +45,35 @@ class ConnectionManager:
         except Exception as e:
             logger.error(f"Error disconnecting player {player_id} from game {game_id}: {str(e)}")
 
-    async def broadcast_game_state(self, game_id: str):
+    async def broadcast_game_state(self, game_id: str, dead_heroes: Optional[List[Dict]] = None):
+        """Broadcast game state to all players, optionally including info about dead heroes"""
         if game_id not in self.games:
             return
         
         game = self.games[game_id]
-        game_state = game.get_game_status()
         
+        # Create the message
+        message = {
+            "type": "game_state",
+            "payload": game.get_game_status(),
+        }
+        
+        # If there were any deaths, include them
+        if dead_heroes:
+            message["dead_heroes"] = dead_heroes
+            
+        # If game is over, include winner info
+        if game.status == GameStatus.GAME_OVER:
+            winner_id = game.current_turn
+            winner = game.players.get(winner_id)
+            message["winner_id"] = winner_id
+            message["winner_name"] = winner.name if winner and winner.name else f"Player {winner_id}"
+            
+        # Send to all players
         if game_id in self.active_connections:
             for player_id, connection in self.active_connections[game_id].items():
                 try:
-                    await connection.send_json({
-                        "type": "game_state",
-                        "payload": game_state
-                    })
+                    await connection.send_json(message)
                 except Exception as e:
                     logger.error(f"Error sending game state to player {player_id}: {e}")
 
@@ -201,29 +216,25 @@ class ConnectionManager:
 
             payload = data.get("payload", {})
             hero_id = payload.get("hero_id")
-            target_hero_id = payload.get("target_hero_id")
             ability_id = payload.get("ability_id")
+            target_position = Position(**payload.get("target_position", {}))
 
-            if not all([hero_id, target_hero_id, ability_id]):
+            if not all([hero_id, ability_id, target_position]):
                 await self.send_error(websocket, "Invalid ability request")
                 return
 
-            # Find the hero and target
+            # Find the hero
             hero = None
-            target_hero = None
             for player in game.players.values():
                 for h in player.heroes:
                     if h.id == hero_id:
                         hero = h
-                    elif h.id == target_hero_id:
-                        target_hero = h
-                    if hero and target_hero:
                         break
-                if hero and target_hero:
+                if hero:
                     break
 
-            if not hero or not target_hero:
-                await self.send_error(websocket, "Hero or target not found")
+            if not hero:
+                await self.send_error(websocket, "Hero not found")
                 return
 
             if hero.owner_id != player_id:
@@ -231,10 +242,24 @@ class ConnectionManager:
                 return
 
             # Use the ability
-            if not hero.use_ability(ability_id, target_hero):
-                await self.send_error(websocket, "Invalid ability use")
-                return
-
-            await self.broadcast_game_state(game_id)
+            success, error, dead_heroes = game.use_ability(hero_id, ability_id, target_position)
+            if success:
+                if dead_heroes:
+                    # Convert dead heroes to dictionaries for serialization
+                    dead_hero_dicts = [
+                        {
+                            'id': h.id,
+                            'position': {'x': h.position.x, 'y': h.position.y},
+                            'owner_id': h.owner_id,
+                            'current_hp': h.current_hp,
+                            'max_hp': h.max_hp,
+                            'name': h.name
+                        } for h in dead_heroes
+                    ]
+                    await self.broadcast_game_state(game_id, dead_hero_dicts)
+                else:
+                    await self.broadcast_game_state(game_id)
+            else:
+                await self.send_error(websocket, error or "Invalid ability use")
 
 manager = ConnectionManager()

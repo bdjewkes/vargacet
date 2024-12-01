@@ -16,19 +16,15 @@ class TestPathfinding(unittest.TestCase):
             heroes_per_player=1,
             status=GameStatus.IN_PROGRESS
         )
-        self.game.players = {
-            "p1": PlayerState(
-                player_id="p1",
-                name="Player 1",
-                heroes=[
-                    Hero(
-                        id="h1",
-                        position=Position(x=0, y=0),
-                        owner_id="p1"
-                    )
-                ]
-            )
-        }
+        self.player1 = "p1"
+        self.player2 = "p2"
+        self.game.add_player(self.player1)
+        self.game.add_player(self.player2)
+        
+        # Get references to heroes for testing
+        self.hero1 = self.game.players[self.player1].heroes[0]
+        self.hero2 = self.game.players[self.player2].heroes[0]
+        
         # Add obstacles at (0,1)
         self.game.obstacles = set([
             "0,1",  # Block direct path
@@ -51,7 +47,7 @@ class TestPathfinding(unittest.TestCase):
             (1, 4): 5,
         }
         
-        hero = self.game.players["p1"].heroes[0]
+        hero = self.game.players[self.player1].heroes[0]
         
         # Test each position
         for (x, y), expected_dist in expected_distances.items():
@@ -77,7 +73,7 @@ class TestPathfinding(unittest.TestCase):
                 
     def test_path_validity(self):
         """Test that paths are valid (no diagonal movement, no obstacles)"""
-        hero = self.game.players["p1"].heroes[0]
+        hero = self.game.players[self.player1].heroes[0]
         
         # Test path to (0,2) which must go around the obstacle
         target = Position(x=0, y=2)
@@ -108,22 +104,9 @@ class TestPathfinding(unittest.TestCase):
 
     def test_movement_points_reset(self):
         """Test that movement points are reset at the start of each turn"""
-        # Add a second player
-        self.game.players["p2"] = PlayerState(
-            player_id="p2",
-            name="Player 2",
-            heroes=[
-                Hero(
-                    id="h2",
-                    position=Position(x=4, y=4),
-                    owner_id="p2"
-                )
-            ]
-        )
-        
         # Set current turn to p1
-        self.game.current_turn = "p1"
-        hero1 = self.game.players["p1"].heroes[0]
+        self.game.current_turn = self.player1
+        hero1 = self.game.players[self.player1].heroes[0]
         
         # Get initial movement points
         initial_movement = hero1.movement_points
@@ -158,7 +141,7 @@ class TestPathfinding(unittest.TestCase):
     def test_move_to_2_3(self):
         """Test that a hero can move from (0,0) to (2,3) with 5 movement points"""
         # Get the hero
-        hero = self.game.players["p1"].heroes[0]
+        hero = self.game.players[self.player1].heroes[0]
         hero.movement_points = 5  # Set movement points to 5
         
         # Try to move to (2,3)
@@ -193,6 +176,116 @@ class TestPathfinding(unittest.TestCase):
         # Verify movement points were consumed correctly
         expected_cost = len(path) - 1  # 5 steps
         self.assertEqual(hero.movement_points, 5 - expected_cost)
+
+    def test_can_move_to_within_range(self):
+        # Test movements within range (movement_points = 5)
+        self.assertTrue(self.game.can_move_to(self.hero1.id, Position(x=1, y=1)))  # One step down
+        self.assertTrue(self.game.can_move_to(self.hero1.id, Position(x=2, y=0)))  # One step right
+        self.assertTrue(self.game.can_move_to(self.hero1.id, Position(x=3, y=2)))  # Within range
+        self.assertTrue(self.game.can_move_to(self.hero1.id, Position(x=1, y=4)))  # Max range down
+        self.assertTrue(self.game.can_move_to(self.hero1.id, Position(x=4, y=1)))  # Diagonal within range
+
+    def test_cannot_move_to_out_of_range(self):
+        # Test movements out of range
+        self.assertFalse(self.game.can_move_to(self.hero1.id, Position(x=1, y=5)))  # Too far down
+        self.assertFalse(self.game.can_move_to(self.hero1.id, Position(x=5, y=2)))  # Out of grid
+        self.assertFalse(self.game.can_move_to(self.hero1.id, Position(x=-1, y=0)))  # Out of grid
+
+    def test_cannot_move_to_occupied_position(self):
+        # Try to move to second player's hero position
+        target_pos = Position(x=1, y=4)  # Position of player2's first hero
+        self.assertFalse(self.game.can_move_to(self.hero1.id, target_pos))
+
+    def test_cannot_move_to_obstacle(self):
+        # Add an obstacle
+        self.game.obstacles.add("2,2")
+        
+        # Try to move to obstacle
+        self.assertFalse(self.game.can_move_to(self.hero1.id, Position(x=2, y=2)))
+
+    def test_cannot_move_after_moving(self):
+        self.game.start_game()
+        
+        # Move the hero
+        self.game.move_hero(self.hero1.id, Position(x=1, y=1))
+        
+        # Try to move again
+        self.assertFalse(self.game.can_move_to(self.hero1.id, Position(x=1, y=2)))
+
+
+    def test_game_over(self):
+        self.game.start_game()
+        
+        # Kill all of player2's heroes
+        for hero in self.game.players[self.player2].heroes:
+            hero.current_hp = 0
+        
+        dead_heroes = self.game.remove_dead_heroes()
+        
+        self.assertEqual(len(dead_heroes), 2)
+        self.assertEqual(self.game.status.value, "game_over")  # Compare the enum value
+        self.assertEqual(self.game.current_turn, self.player1)  # Winner
+
+    def test_path_validity(self):
+        """Test that paths are valid (no diagonal movement, no obstacles)"""
+        start = Position(x=0, y=0)
+        end = Position(x=2, y=2)
+        
+        path = self.game.find_path(start, end, 5)
+        
+        # Path should exist
+        self.assertIsNotNone(path)
+        
+        # Path should be a list of positions
+        self.assertTrue(all(isinstance(pos, Position) for pos in path))
+        
+        # Each step should be adjacent (no diagonal movement)
+        for i in range(len(path) - 1):
+            dx = abs(path[i+1].x - path[i].x)
+            dy = abs(path[i+1].y - path[i].y)
+            self.assertTrue((dx == 1 and dy == 0) or (dx == 0 and dy == 1))
+
+    def test_path_distances(self):
+        """Test path distances from (0,0) to all positions in the grid"""
+        start = Position(x=0, y=0)
+        
+        # Test some specific positions
+        test_positions = [
+            (Position(x=1, y=1), 2),  # Diagonal requires 2 moves
+            (Position(x=2, y=0), 2),  # Straight line
+            (Position(x=2, y=2), 4),  # Manhattan distance
+        ]
+        
+        for end_pos, expected_length in test_positions:
+            path = self.game.find_path(start, end_pos, 5)
+            self.assertIsNotNone(path)
+            self.assertEqual(len(path) - 1, expected_length)
+
+    def test_move_to_2_3(self):
+        """Test that a hero can move from (0,0) to (2,3) with 5 movement points"""
+        start = Position(x=0, y=0)
+        end = Position(x=2, y=3)
+        
+        path = self.game.find_path(start, end, 5)
+        
+        self.assertIsNotNone(path)
+        self.assertLessEqual(len(path) - 1, 5)  # Path length should be within movement points
+
+    def test_movement_points_reset(self):
+        """Test that movement points are reset at the start of each turn"""
+        self.game.start_game()
+        
+        # Move hero to use some movement points
+        self.game.move_hero(self.hero1.id, Position(x=1, y=1))
+        initial_points = self.hero1.movement_points
+        
+        # End turn and start new turn
+        self.game.set_next_turn()
+        self.game.set_next_turn()  # Back to first player
+        
+        # Movement points should be reset
+        self.assertEqual(self.hero1.movement_points, self.hero1.max_movement)
+        self.assertGreater(self.hero1.movement_points, initial_points)
 
 if __name__ == '__main__':
     unittest.main()

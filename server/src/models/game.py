@@ -12,6 +12,7 @@ class GameStatus(Enum):
     LOBBY = "lobby"
     IN_PROGRESS = "in_progress"
     FINISHED = "finished"
+    GAME_OVER = "game_over"
 
 class Position(BaseModel):
     x: int
@@ -141,9 +142,8 @@ class GameState(BaseModel):
     game_id: str
     players: Dict[str, PlayerState] = {}
     current_turn: Optional[str] = None
-    max_players: int = 2
     status: GameStatus = GameStatus.LOBBY
-    grid_size: int = 20
+    grid_size: int = 10
     heroes_per_player: int = 4
     obstacles: Set[str] = set()
     moved_hero_id: Optional[str] = None
@@ -177,12 +177,36 @@ class GameState(BaseModel):
 
     def add_player(self, player_id: str) -> bool:
         """Add a player to the game if there's room. Returns True if successful."""
-        if len(self.players) >= self.max_players:
+        if len(self.players) >= 2:
             return False
-        if player_id not in self.players:
-            self.players[player_id] = PlayerState(player_id=player_id)
-            if self.current_turn is None:
-                self.current_turn = player_id
+
+        # Create initial heroes for the player
+        heroes = []
+        heroes_placed = 0
+        
+        if len(self.players) == 0:
+            # First player's heroes at top
+            heroes.append(self.create_hero(player_id, Position(x=1, y=0)))
+            heroes.append(self.create_hero(player_id, Position(x=3, y=0)))
+            heroes.append(self.create_hero(player_id, Position(x=5, y=0)))
+            heroes.append(self.create_hero(player_id, Position(x=7, y=0)))
+        else:
+            # Second player's heroes at bottom
+            heroes.append(self.create_hero(player_id, Position(x=1, y=9)))
+            heroes.append(self.create_hero(player_id, Position(x=3, y=9)))
+            heroes.append(self.create_hero(player_id, Position(x=5, y=9)))
+            heroes.append(self.create_hero(player_id, Position(x=7, y=9)))
+
+        # Add the player
+        self.players[player_id] = PlayerState(
+            player_id=player_id,
+            heroes=heroes
+        )
+
+        # If this was the second player, start the game
+        if len(self.players) == 2:
+            self.start_game()
+            
         return True
 
     def initialize_heroes(self) -> bool:
@@ -228,38 +252,25 @@ class GameState(BaseModel):
             return False
 
     def generate_obstacles(self) -> None:
-        """Generate random obstacles, avoiding spawn areas."""
+        """Generate a small number of random obstacles"""
+        num_obstacles = int(self.grid_size * self.grid_size * 0.15)  # 15% of grid squares
         self.obstacles.clear()
         
-        spawn_area = set()
-        for y in range(4):  
+        # Keep track of positions we want to keep clear for heroes
+        reserved_positions = set()
+        for y in range(2):  # Reserve first two rows for player 1
             for x in range(self.grid_size):
-                spawn_area.add(f"{x},{y}")
-        for y in range(self.grid_size - 4, self.grid_size):  
+                reserved_positions.add(f"{x},{y}")
+        for y in range(self.grid_size-2, self.grid_size):  # Reserve last two rows for player 2
             for x in range(self.grid_size):
-                spawn_area.add(f"{x},{y}")
-        
-        available_cells = self.grid_size * (self.grid_size - 8)  
-        num_obstacles = int(available_cells * 0.15)
-        
-        logger.info(f"Generating {num_obstacles} obstacles")
-        
-        obstacles_placed = 0
-        max_attempts = num_obstacles * 3  
-        attempts = 0
-        
-        while obstacles_placed < num_obstacles and attempts < max_attempts:
+                reserved_positions.add(f"{x},{y}")
+
+        while len(self.obstacles) < num_obstacles:
             x = random.randint(0, self.grid_size - 1)
-            y = random.randint(4, self.grid_size - 5)  
-            pos_key = f"{x},{y}"
-            
-            if pos_key not in spawn_area and pos_key not in self.obstacles:
-                self.obstacles.add(pos_key)
-                obstacles_placed += 1
-            
-            attempts += 1
-        
-        logger.info(f"Generated {len(self.obstacles)} obstacles: {sorted(self.obstacles)}")
+            y = random.randint(0, self.grid_size - 1)
+            pos = f"{x},{y}"
+            if pos not in self.obstacles and pos not in reserved_positions:
+                self.obstacles.add(pos)
 
     def is_position_occupied(self, x: int, y: int) -> bool:
         """Check if a position is occupied by any hero"""
@@ -355,7 +366,7 @@ class GameState(BaseModel):
 
     def is_full(self) -> bool:
         """Check if the game is full."""
-        return len(self.players) >= self.max_players
+        return len(self.players) >= 2
 
     def get_game_status(self) -> dict:
         """Get the current game status."""
@@ -399,3 +410,257 @@ class GameState(BaseModel):
             current_player = self.players[self.current_turn]
             for hero in current_player.heroes:
                 hero.reset_movement()
+
+    def remove_dead_heroes(self) -> List[Hero]:
+        """Remove any heroes with 0 or less HP and return the list of removed heroes"""
+        dead_heroes = []
+        for player in self.players.values():
+            # Find dead heroes
+            dead = [hero for hero in player.heroes if hero.current_hp <= 0]
+            # Remove them from the player's hero list
+            player.heroes = [hero for hero in player.heroes if hero.current_hp > 0]
+            dead_heroes.extend(dead)
+            
+            # Check if this player has lost (no heroes left)
+            if not player.heroes:
+                self.status = GameStatus.GAME_OVER
+                # Set the winner to the other player
+                winner_id = next(pid for pid in self.players.keys() if pid != player.player_id)
+                self.current_turn = winner_id
+                logger.info(f"Game {self.game_id} over. Winner: {winner_id}")
+                break
+                
+        return dead_heroes
+
+    def apply_effect(self, target_hero: Hero, effect: Effect) -> List[Hero]:
+        """Apply an effect to a hero and handle any resulting deaths"""
+        if effect.type == EffectType.DAMAGE:
+            # Apply damage, considering armor reduction
+            damage_reduction = target_hero.armor / 100.0  # Convert armor to percentage
+            actual_damage = int(effect.amount * (1 - damage_reduction))
+            target_hero.current_hp = max(0, target_hero.current_hp - actual_damage)
+        elif effect.type == EffectType.HEAL:
+            # Apply healing, not exceeding max HP
+            target_hero.current_hp = min(target_hero.max_hp, target_hero.current_hp + effect.amount)
+        
+        # Check for and handle any deaths
+        dead_heroes = self.remove_dead_heroes()
+        return dead_heroes
+
+    def use_ability(self, hero_id: str, ability_id: str, target_position: Position) -> Tuple[bool, Optional[str], List[Hero]]:
+        """Use a hero's ability. Returns (success, error_message, list_of_dead_heroes)"""
+        # Find the hero
+        hero = self.get_hero_by_id(hero_id)
+        if not hero:
+            return False, "Hero not found", []
+            
+        # Verify it's the hero's owner's turn
+        if hero.owner_id != self.current_turn:
+            return False, "Not your turn", []
+            
+        # Find the ability
+        ability = next((a for a in hero.abilities if a.id == ability_id), None)
+        if not ability:
+            return False, "Ability not found", []
+            
+        # Check range using Manhattan distance
+        distance = abs(hero.position.x - target_position.x) + abs(hero.position.y - target_position.y)
+        if distance > ability.range:
+            return False, "Target out of range", []
+            
+        # Find target hero
+        target_hero = self.get_hero_at_position(target_position)
+        if not target_hero:
+            return False, "No target at that position", []
+            
+        # Apply the effect and get list of any heroes that died
+        dead_heroes = self.apply_effect(target_hero, ability.effect)
+        
+        # If target hero died, remove it from its owner's heroes
+        if target_hero.current_hp <= 0 and target_hero not in dead_heroes:
+            dead_heroes.append(target_hero)
+            
+            # Check if game is over
+            for player in self.players.values():
+                if target_hero in player.heroes:
+                    player.heroes.remove(target_hero)
+                    
+                    # Check if game is over
+                    if not player.heroes:
+                        self.status = GameStatus.GAME_OVER
+                        # Set winner
+                        winner_id = next(pid for pid in self.players.keys() if pid != player.player_id)
+                        self.current_turn = winner_id
+                    break
+            
+        return True, None, dead_heroes
+
+    def get_hero_by_id(self, hero_id: str) -> Optional[Hero]:
+        """Find a hero by ID"""
+        for player in self.players.values():
+            for hero in player.heroes:
+                if hero.id == hero_id:
+                    return hero
+        return None
+
+    def get_hero_at_position(self, position: Position) -> Optional[Hero]:
+        """Find a hero at a given position"""
+        for player in self.players.values():
+            for hero in player.heroes:
+                if hero.position.x == position.x and hero.position.y == position.y:
+                    return hero
+        return None
+
+    def is_in_range(self, start: Position, end: Position, range: int) -> bool:
+        """Check if a position is within a given range"""
+        distance = abs(start.x - end.x) + abs(start.y - end.y)
+        return distance <= range
+
+    def start_game(self) -> None:
+        """Start the game by initializing heroes and setting initial game state"""
+        if len(self.players) != 2:
+            return
+            
+        self.status = GameStatus.IN_PROGRESS
+        
+        # Set the first player's turn
+        self.current_turn = list(self.players.keys())[0]
+        
+        # Generate obstacles
+        self.generate_obstacles()
+        
+        # Reset all heroes' movement points
+        for player in self.players.values():
+            for hero in player.heroes:
+                hero.reset_movement()
+
+    def can_move_to(self, hero_id: str, new_position: Position) -> bool:
+        """Check if a hero can move to a new position"""
+        hero = self.get_hero_by_id(hero_id)
+        if not hero:
+            return False
+        
+        # Check if it's this hero's turn
+        if hero.owner_id != self.current_turn:
+            return False
+            
+        # Check if hero has already moved
+        if self.moved_hero_id == hero_id:
+            return False
+            
+        # Check if position is within grid bounds
+        if (new_position.x < 0 or new_position.x >= self.grid_size or
+            new_position.y < 0 or new_position.y >= self.grid_size):
+            return False
+            
+        # Check if position is occupied by another hero
+        target_hero = self.get_hero_at_position(new_position)
+        if target_hero:
+            return False
+            
+        # Check if position is an obstacle
+        pos_key = f"{new_position.x},{new_position.y}"
+        if pos_key in self.obstacles:
+            return False
+            
+        # Check if there is a valid path within movement points
+        path = self.find_path(hero.position, new_position, hero.max_movement)
+        if not path:
+            return False
+            
+        # Check if path length is within movement points
+        path_length = len(path) - 1
+        if path_length > hero.movement_points:
+            return False
+            
+        return True
+
+    def move_hero(self, hero_id: str, new_position: Position) -> bool:
+        """Move a hero to a new position"""
+        hero = self.get_hero_by_id(hero_id)
+        if not hero:
+            return False
+            
+        # Verify it's this hero's turn
+        if hero.owner_id != self.current_turn:
+            return False
+            
+        # Check if hero has already moved
+        if self.moved_hero_id == hero_id:
+            return False
+            
+        # Try to move the hero
+        if hero.move_to(new_position, self):
+            self.moved_hero_id = hero_id
+            return True
+            
+        return False
+
+    def use_ability(self, hero_id: str, ability_id: str, target_position: Position) -> Tuple[bool, Optional[str], List[Hero]]:
+        """Use a hero's ability. Returns (success, error_message, list_of_dead_heroes)"""
+        # Find the hero
+        hero = self.get_hero_by_id(hero_id)
+        if not hero:
+            return False, "Hero not found", []
+            
+        # Verify it's the hero's owner's turn
+        if hero.owner_id != self.current_turn:
+            return False, "Not your turn", []
+            
+        # Find the ability
+        ability = next((a for a in hero.abilities if a.id == ability_id), None)
+        if not ability:
+            return False, "Ability not found", []
+            
+        # Check range using Manhattan distance
+        distance = abs(hero.position.x - target_position.x) + abs(hero.position.y - target_position.y)
+        if distance > ability.range:
+            return False, "Target out of range", []
+            
+        # Find target hero
+        target_hero = self.get_hero_at_position(target_position)
+        if not target_hero:
+            return False, "No target at that position", []
+            
+        # Apply the effect and get list of any heroes that died
+        dead_heroes = self.apply_effect(target_hero, ability.effect)
+        
+        # If target hero died, remove it from its owner's heroes
+        if target_hero.current_hp <= 0 and target_hero not in dead_heroes:
+            dead_heroes.append(target_hero)
+            
+            # Check if game is over
+            for player in self.players.values():
+                if target_hero in player.heroes:
+                    player.heroes.remove(target_hero)
+                    
+                    # Check if game is over
+                    if not player.heroes:
+                        self.status = GameStatus.GAME_OVER
+                        # Set winner
+                        winner_id = next(pid for pid in self.players.keys() if pid != player.player_id)
+                        self.current_turn = winner_id
+                    break
+            
+        return True, None, dead_heroes
+
+    def remove_dead_heroes(self) -> List[Hero]:
+        """Remove any heroes with 0 or less HP and return the list of removed heroes"""
+        dead_heroes = []
+        for player in self.players.values():
+            # Find dead heroes
+            dead = [hero for hero in player.heroes if hero.current_hp <= 0]
+            # Remove them from the player's hero list
+            player.heroes = [hero for hero in player.heroes if hero.current_hp > 0]
+            dead_heroes.extend(dead)
+            
+            # Check if this player has lost (no heroes left)
+            if not player.heroes:
+                self.status = GameStatus.GAME_OVER
+                # Set the winner to the other player
+                winner_id = next(pid for pid in self.players.keys() if pid != player.player_id)
+                self.current_turn = winner_id
+                logger.info(f"Game {self.game_id} over. Winner: {winner_id}")
+                break
+                
+        return dead_heroes
