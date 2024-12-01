@@ -31,21 +31,7 @@ class Ability(BaseModel):
     name: str
     range: int
     effect: Effect
-
-# Define standard abilities
-PUNCH_ABILITY = Ability(
-    id="punch",
-    name="Punch",
-    range=1,
-    effect=Effect(type=EffectType.DAMAGE, amount=1)
-)
-
-BANDAGE_ABILITY = Ability(
-    id="bandage",
-    name="Bandage",
-    range=1,
-    effect=Effect(type=EffectType.HEAL, amount=2)
-)
+    action_cost: int = 1  # Default cost of 1 action point
 
 class Hero(BaseModel):
     id: str
@@ -58,13 +44,37 @@ class Hero(BaseModel):
     max_movement: int = 5
     movement_points: int = 5
     armor: int = 3
-    abilities: List[Ability] = [PUNCH_ABILITY]
+    max_action_points: int = 2
+    current_action_points: int = 2
+    abilities: List[Ability] = [
+        Ability(
+            id="heal_1",
+            name="Heal",
+            range=3,
+            effect=Effect(type=EffectType.HEAL, amount=5),
+            action_cost=2
+        ),
+        Ability(
+            id="damage_1",
+            name="Punch",
+            range=1,
+            effect=Effect(type=EffectType.DAMAGE, amount=6),
+            action_cost=1
+        ),
+        Ability(
+            id="ranged_1",
+            name="Shortbow",
+            range=3,
+            effect=Effect(type=EffectType.DAMAGE, amount=4),
+            action_cost=1
+        ),
+    ]
     name: str  # Single letter A-Z
 
     def reset_movement(self):
         """Reset movement points at the start of turn"""
         self.movement_points = self.max_movement
-        self.start_position = Position(x=self.position.x, y=self.position.y)
+        self.current_action_points = self.max_action_points
 
     def can_move_to(self, new_position: Position, game_state: 'GameState') -> bool:
         """Check if hero can move to new position based on remaining points and valid path"""
@@ -115,23 +125,6 @@ class Hero(BaseModel):
             self.position = self.start_position
             self.start_position = None
 
-    def use_ability(self, ability_id: str, target: 'Hero', game_state: 'GameState') -> bool:
-        """Use an ability on a target hero"""
-        ability = next((a for a in self.abilities if a.id == ability_id), None)
-        if not ability:
-            return False
-
-        distance = abs(self.position.x - target.position.x) + abs(self.position.y - target.position.y)
-        if distance > ability.range:
-            return False
-
-        if ability.effect.type == EffectType.DAMAGE:
-            target.current_hp = max(0, target.current_hp - ability.effect.amount)
-        elif ability.effect.type == EffectType.HEAL:
-            target.current_hp = min(target.max_hp, target.current_hp + ability.effect.amount)
-
-        return True
-
 class PlayerState(BaseModel):
     player_id: str
     name: Optional[str] = None
@@ -164,19 +157,22 @@ class GameState(BaseModel):
                     id="heal_1",
                     name="Heal",
                     range=3,
-                    effect=Effect(type=EffectType.HEAL, amount=5)
+                    effect=Effect(type=EffectType.HEAL, amount=5),
+                    action_cost=2
                 ),
                 Ability(
                     id="damage_1",
                     name="Punch",
                     range=1,
-                    effect=Effect(type=EffectType.DAMAGE, amount=6)
+                    effect=Effect(type=EffectType.DAMAGE, amount=6),
+                    action_cost=1
                 ),
                 Ability(
                     id="ranged_1",
                     name="Shortbow",
                     range=3,
-                    effect=Effect(type=EffectType.DAMAGE, amount=4)
+                    effect=Effect(type=EffectType.DAMAGE, amount=4),
+                    action_cost=1
                 ),
             ]
         )
@@ -456,6 +452,10 @@ class GameState(BaseModel):
         if not ability:
             return False, "Ability not found", []
             
+        # Check if hero has enough action points
+        if hero.current_action_points < ability.action_cost:
+            return False, "Not enough action points", []
+            
         # Check range using Manhattan distance
         distance = abs(hero.position.x - target_position.x) + abs(hero.position.y - target_position.y)
         if distance > ability.range:
@@ -466,25 +466,14 @@ class GameState(BaseModel):
         if not target_hero:
             return False, "No target at that position", []
             
+        # Consume action points
+        hero.current_action_points -= ability.action_cost
+            
         # Apply the effect and get list of any heroes that died
         dead_heroes = self.apply_effect(target_hero, ability.effect)
         
-        # If target hero died, remove it from its owner's heroes
-        if target_hero.current_hp <= 0 and target_hero not in dead_heroes:
-            dead_heroes.append(target_hero)
-            
-            # Check if game is over
-            for player in self.players.values():
-                if target_hero in player.heroes:
-                    player.heroes.remove(target_hero)
-                    
-                    # Check if game is over
-                    if not player.heroes:
-                        self.status = GameStatus.GAME_OVER
-                        # Set winner
-                        winner_id = next(pid for pid in self.players.keys() if pid != player.player_id)
-                        self.current_turn = winner_id
-                    break
+        # Check for any dead heroes and update game state
+        dead_heroes = self.remove_dead_heroes()
             
         return True, None, dead_heroes
 
@@ -587,72 +576,3 @@ class GameState(BaseModel):
             return True
             
         return False
-
-    def use_ability(self, hero_id: str, ability_id: str, target_position: Position) -> Tuple[bool, Optional[str], List[Hero]]:
-        """Use a hero's ability. Returns (success, error_message, list_of_dead_heroes)"""
-        # Find the hero
-        hero = self.get_hero_by_id(hero_id)
-        if not hero:
-            return False, "Hero not found", []
-            
-        # Verify it's the hero's owner's turn
-        if hero.owner_id != self.current_turn:
-            return False, "Not your turn", []
-            
-        # Find the ability
-        ability = next((a for a in hero.abilities if a.id == ability_id), None)
-        if not ability:
-            return False, "Ability not found", []
-            
-        # Check range using Manhattan distance
-        distance = abs(hero.position.x - target_position.x) + abs(hero.position.y - target_position.y)
-        if distance > ability.range:
-            return False, "Target out of range", []
-            
-        # Find target hero
-        target_hero = self.get_hero_at_position(target_position)
-        if not target_hero:
-            return False, "No target at that position", []
-            
-        # Apply the effect and get list of any heroes that died
-        dead_heroes = self.apply_effect(target_hero, ability.effect)
-        
-        # If target hero died, remove it from its owner's heroes
-        if target_hero.current_hp <= 0 and target_hero not in dead_heroes:
-            dead_heroes.append(target_hero)
-            
-            # Check if game is over
-            for player in self.players.values():
-                if target_hero in player.heroes:
-                    player.heroes.remove(target_hero)
-                    
-                    # Check if game is over
-                    if not player.heroes:
-                        self.status = GameStatus.GAME_OVER
-                        # Set winner
-                        winner_id = next(pid for pid in self.players.keys() if pid != player.player_id)
-                        self.current_turn = winner_id
-                    break
-            
-        return True, None, dead_heroes
-
-    def remove_dead_heroes(self) -> List[Hero]:
-        """Remove any heroes with 0 or less HP and return the list of removed heroes"""
-        dead_heroes = []
-        for player in self.players.values():
-            # Find dead heroes
-            dead = [hero for hero in player.heroes if hero.current_hp <= 0]
-            # Remove them from the player's hero list
-            player.heroes = [hero for hero in player.heroes if hero.current_hp > 0]
-            dead_heroes.extend(dead)
-            
-            # Check if this player has lost (no heroes left)
-            if not player.heroes:
-                self.status = GameStatus.GAME_OVER
-                # Set the winner to the other player
-                winner_id = next(pid for pid in self.players.keys() if pid != player.player_id)
-                self.current_turn = winner_id
-                logger.info(f"Game {self.game_id} over. Winner: {winner_id}")
-                break
-                
-        return dead_heroes
