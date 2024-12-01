@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import './Game.css';
 
@@ -29,7 +29,6 @@ interface Hero {
   damage: number;
   movement_points: number;
   armor: number;
-  remaining_movement: number;
   abilities: Ability[];
 }
 
@@ -65,7 +64,6 @@ interface GridCell {
 const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) => {
   const [selectedHero, setSelectedHero] = useState<Hero | null>(null);
   const [hoveredHero, setHoveredHero] = useState<Hero | null>(null);
-  const [hasMoved, setHasMoved] = useState(false);
   const [selectedAbility, setSelectedAbility] = useState<Ability | null>(null);
   const [remainingMovement, setRemainingMovement] = useState<number>(0);
 
@@ -94,7 +92,6 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
   // Reset movement state
   const resetMovementState = () => {
     setSelectedHero(null);
-    setHasMoved(false);
     setRemainingMovement(0);
   };
 
@@ -130,64 +127,104 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
     return newGrid;
   }, [gameState, playerId]);
 
-  // Calculate movement range based on remaining points and current position
-  const movementRange = useMemo(() => {
-    if (!selectedHero || !isMyTurn || (hasMoved && remainingMovement === 0)) {
-      return new Set<string>();
-    }
-
-    const range = new Set<string>();
-    const queue: { x: number; y: number; moves: number }[] = [
-      { 
-        x: selectedHero.position.x, 
-        y: selectedHero.position.y, 
-        moves: remainingMovement || selectedHero.movement_points 
-      }
+  const findPath = (
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    maxDistance: number
+  ): Position[] | null => {
+    // BFS implementation
+    const queue: Array<[number, number, Position[], number]> = [
+      [startX, startY, [{ x: startX, y: startY }], 0],
     ];
     const visited = new Set<string>();
-    const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+    const directions = [[0, 1], [1, 0], [0, -1], [-1, 0]]; // right, down, left, up
+
+    const isValidPosition = (x: number, y: number): boolean => {
+      if (x < 0 || x >= gameState.grid_size || y < 0 || y >= gameState.grid_size) {
+        return false;
+      }
+      const posKey = `${x},${y}`;
+      return !gameState.obstacles.includes(posKey);
+    };
+
+    const isOccupied = (x: number, y: number): boolean => {
+      return Object.values(gameState.players)
+        .flatMap(p => p.heroes)
+        .some(h => h.position.x === x && h.position.y === y);
+    };
 
     while (queue.length > 0) {
-      const { x, y, moves } = queue.shift()!;
-      const key = `${x},${y}`;
+      const [x, y, path, distance] = queue.shift()!;
+      const posKey = `${x},${y}`;
 
-      if (visited.has(key)) continue;
-      visited.add(key);
-
-      // Add current position to range (except starting position)
-      if (!(x === selectedHero.position.x && y === selectedHero.position.y)) {
-        range.add(key);
+      if (x === endX && y === endY) {
+        return path;
       }
 
-      if (moves === 0) continue;
+      if (visited.has(posKey) || distance > maxDistance) {
+        continue;
+      }
 
-      // Check all adjacent cells
+      visited.add(posKey);
+
       for (const [dx, dy] of directions) {
         const newX = x + dx;
         const newY = y + dy;
         const newKey = `${newX},${newY}`;
 
-        // Check bounds
-        if (newX < 0 || newX >= gameState.grid_size || 
-            newY < 0 || newY >= gameState.grid_size) {
-          continue;
+        if (!visited.has(newKey) && 
+            isValidPosition(newX, newY) && 
+            !isOccupied(newX, newY)) {
+          const newPath = [...path, { x: newX, y: newY }];
+          queue.push([newX, newY, newPath, distance + 1]);
         }
-
-        // Skip if visited
-        if (visited.has(newKey)) continue;
-
-        // Skip if occupied by another hero or obstacle
-        const cell = grid[newY][newX];
-        if (cell.isObstacle || (cell.hero && cell.hero.id !== selectedHero.id)) {
-          continue;
-        }
-
-        queue.push({ x: newX, y: newY, moves: moves - 1 });
       }
     }
 
-    return range;
-  }, [selectedHero, grid, gameState.grid_size, isMyTurn, hasMoved, remainingMovement]);
+    return null;
+  };
+
+  // Calculate movement range based on remaining points and current position
+  const calculateMoveRange = useCallback(() => {
+    if (!selectedHero || !isMyTurn || (gameState.moved_hero_id && gameState.moved_hero_id !== selectedHero.id)) return [];
+
+    const range = new Set<string>();
+    const maxRange = selectedHero.movement_points;
+
+    // Try all positions within Manhattan distance + 1 to ensure we check all reachable squares
+    for (let y = 0; y < gameState.grid_size; y++) {
+      for (let x = 0; x < gameState.grid_size; x++) {
+        const distance = Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y);
+        
+        // Check positions within range + 1 to catch all possible paths
+        if (distance <= maxRange + 1) {
+          // Check if there's a valid path to this position
+          const path = findPath(
+            selectedHero.position.x,
+            selectedHero.position.y,
+            x,
+            y,
+            maxRange
+          );
+          
+          // Only add if path exists and its length (minus start position) is within movement points
+          if (path && (path.length - 1) <= maxRange) {
+            range.add(`${x},${y}`);
+          }
+        }
+      }
+    }
+
+    return Array.from(range).map(pos => {
+      const [x, y] = pos.split(',').map(Number);
+      return { x, y };
+    });
+  }, [selectedHero, gameState, isMyTurn]);
+
+  // Memoize the movement range calculation
+  const moveRange = useMemo(() => calculateMoveRange(), [calculateMoveRange]);
 
   const handleUseAbility = (targetHero: Hero) => {
     if (!selectedHero || !selectedAbility) return;
@@ -239,7 +276,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
     // Handle movement if no ability is selected
     if (selectedHero && !selectedAbility) {
       const distance = Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y);
-      if (distance <= selectedHero.remaining_movement) {
+      if (distance <= selectedHero.movement_points) {
         send(JSON.stringify({
           type: 'move_hero',
           payload: {
@@ -247,14 +284,13 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
             position: clickedPosition
           }
         }));
-        setHasMoved(true);
       }
       setSelectedHero(null);
     }
   };
 
   const handleEndTurn = () => {
-    if (!isMyTurn || !hasMoved) return;
+    if (!isMyTurn) return;
 
     // Reset local state
     resetMovementState();
@@ -272,7 +308,6 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
       type: 'undo_move'
     }));
     setSelectedHero(null);
-    setHasMoved(false);
     // Note: We don't need to explicitly reset moved_hero_id here as it will come from the server's game state update
   };
 
@@ -289,7 +324,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
         </div>
         {selectedHero && (
           <div className="hero-info">
-            Selected Hero: {selectedHero.id} (Movement: {selectedHero.remaining_movement})
+            Selected Hero: {selectedHero.id} (Movement: {selectedHero.movement_points})
           </div>
         )}
       </div>
@@ -298,11 +333,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
           {grid.map((row, y) => (
             <div key={y} className="grid-row">
               {row.map((cell, x) => {
-                const isInRange = selectedHero && (
-                  selectedAbility
-                    ? Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y) <= selectedAbility.range
-                    : Math.abs(selectedHero.position.x - x) + Math.abs(selectedHero.position.y - y) <= selectedHero.remaining_movement
-                );
+                const isInRange = moveRange.some(pos => pos.x === x && pos.y === y);
                 const isSelected = selectedHero?.position.x === x && selectedHero?.position.y === y;
                 
                 return (
@@ -366,9 +397,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate }) =
           )}
           {isMyTurn && (
             <div className="action-buttons">
-              {hasMoved && (
-                <button onClick={handleUndoMove}>Undo Move</button>
-              )}
+              <button onClick={handleUndoMove}>Undo Move</button>
               <button onClick={handleEndTurn}>End Turn</button>
             </div>
           )}

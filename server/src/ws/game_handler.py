@@ -150,14 +150,12 @@ class ConnectionManager:
                 await self.send_error(websocket, "Not your hero")
                 return
 
-            # Check if the move is valid
-            if not hero.move_to(new_pos):
+            # Move the hero
+            if not hero.move_to(new_pos, game):
                 await self.send_error(websocket, "Invalid move")
                 return
 
-            # Track which hero moved this turn
-            game.moved_hero_id = hero_id
-
+            game.moved_hero_id = hero.id
             await self.broadcast_game_state(game_id)
 
         elif message_type == "undo_move":
