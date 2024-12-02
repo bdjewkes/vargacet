@@ -25,6 +25,7 @@ class EffectType(str, Enum):
 class Effect(BaseModel):
     type: EffectType
     amount: int
+    area_of_effect: int = 0  # Default to 0 for single-target effects
 
 class Ability(BaseModel):
     id: str
@@ -67,6 +68,13 @@ class Hero(BaseModel):
             range=3,
             effect=Effect(type=EffectType.DAMAGE, amount=4),
             action_cost=1
+        ),
+        Ability(
+            id="explosion_1",
+            name="Explosion",
+            range=4,
+            effect=Effect(type=EffectType.DAMAGE, amount=3, area_of_effect=1),
+            action_cost=2
         ),
     ]
     name: str  # Single letter A-Z
@@ -174,6 +182,13 @@ class GameState(BaseModel):
                     range=3,
                     effect=Effect(type=EffectType.DAMAGE, amount=4),
                     action_cost=1
+                ),
+                Ability(
+                    id="explosion_1",
+                    name="Explosion",
+                    range=4,
+                    effect=Effect(type=EffectType.DAMAGE, amount=3, area_of_effect=1),
+                    action_cost=2
                 ),
             ]
         )
@@ -516,19 +531,29 @@ class GameState(BaseModel):
         if distance > ability.range:
             return False, "Target out of range", []
             
-        # Find target hero
-        target_hero = self.get_hero_at_position(target_position)
-        if not target_hero:
-            return False, "No target at that position", []
+        # For area effects, we don't need a target hero at the exact position
+        if ability.effect.area_of_effect == 0:
+            # Single target ability needs a hero at the position
+            target_hero = self.get_hero_at_position(target_position)
+            if not target_hero:
+                return False, "No target at that position", []
+            affected_heroes = [target_hero]
+        else:
+            # Area effect - get all heroes in range
+            affected_heroes = self.get_heroes_in_area(target_position, ability.effect.area_of_effect)
+            if not affected_heroes:
+                return False, "No targets in area", []
             
         # Consume action points
         hero.current_action_points -= ability.action_cost
             
-        # Apply the effect and get list of any heroes that died
-        dead_heroes = self.apply_effect(target_hero, ability.effect)
+        # Apply the effect to all affected heroes
+        dead_heroes = []
+        for target_hero in affected_heroes:
+            dead_heroes.extend(self.apply_effect(target_hero, ability.effect))
         
-        # Check for any dead heroes and update game state
-        dead_heroes = self.remove_dead_heroes()
+        # Remove duplicates from dead_heroes list
+        dead_heroes = list(set(dead_heroes))
             
         return True, None, dead_heroes
 
@@ -631,3 +656,13 @@ class GameState(BaseModel):
             return True
             
         return False
+
+    def get_heroes_in_area(self, center: Position, radius: int) -> List[Hero]:
+        """Find all heroes within a radius of a position using Manhattan distance"""
+        heroes_in_area = []
+        for player in self.players.values():
+            for hero in player.heroes:
+                distance = abs(hero.position.x - center.x) + abs(hero.position.y - center.y)
+                if distance <= radius:
+                    heroes_in_area.append(hero)
+        return heroes_in_area
