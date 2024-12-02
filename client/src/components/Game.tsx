@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
+import SoundManager from '../audio/SoundManager';
 import './Game.css';
 
 interface Position {
@@ -73,6 +74,8 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
   const [remainingMovement, setRemainingMovement] = useState<number>(0);
   const [gameStatus, setGameStatus] = useState<string>('');
 
+  const soundManager = useMemo(() => SoundManager.getInstance(), []);
+
   const wsUrl = `ws://localhost:8000/ws/game/${gameState.game_id}/player/${playerId}`;
   const { send } = useWebSocket(wsUrl, (event: MessageEvent) => {
     try {
@@ -84,8 +87,11 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
         onGameStateUpdate(data.payload);
         
         // Handle dead heroes
-        if (data.dead_heroes) {
+        if (data.dead_heroes && data.dead_heroes.length > 0) {
           data.dead_heroes.forEach((deadHero: Hero) => {
+            // Play death sound
+            soundManager.playDeathSound();
+            
             // Clear selection if the dead hero was selected
             if (selectedHero?.id === deadHero.id) {
               setSelectedHero(null);
@@ -251,7 +257,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
     setSelectedHero(null);
   };
 
-  const handleCellClick = async (x: number, y: number) => {
+  const handleCellClick = (x: number, y: number) => {
     // Disable interactions if game is over
     if (gameState.status === 'game_over') return;
     
@@ -270,6 +276,8 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
             target_position: { x, y }  // Send position instead of hero ID
           }
         });
+        // Play ability sound
+        soundManager.playAbilitySound(selectedAbility.id);
         setSelectedAbility(null);
       }
     } else if (selectedHero) {
