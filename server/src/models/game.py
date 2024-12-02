@@ -600,6 +600,9 @@ class GameState(BaseModel):
         self.status = GameStatus.IN_PROGRESS
         self.current_turn = list(self.players.keys())[0]
 
+        # Save initial game state
+        self.save_turn_state()
+
     def can_move_to(self, hero_id: str, new_position: Position) -> bool:
         """Check if a hero can move to a new position"""
         hero = self.get_hero_by_id(hero_id)
