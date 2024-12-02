@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import SoundManager from '../audio/SoundManager';
+import Chat from './Chat';
 import './Game.css';
 
 interface Position {
@@ -18,7 +19,7 @@ interface Ability {
   name: string;
   range: number;
   effect: Effect;
-  action_cost: number; // Add action_cost property
+  action_cost: number; 
 }
 
 interface Hero {
@@ -50,15 +51,15 @@ interface GameState {
   current_turn: string | null;
   status: string;
   grid_size: number;
-  obstacles: string[];  // Array of "x,y" strings
-  moved_hero_id: string | null;  // Track which hero has moved this turn
+  obstacles: string[];  
+  moved_hero_id: string | null;  
 }
 
 interface GameProps {
   gameState: GameState;
   playerId: string;
   onGameStateUpdate: (gameState: GameState) => void;
-  onReturnToLobby?: () => void;  // Add new prop for handling return to lobby
+  onReturnToLobby?: () => void;  
 }
 
 interface GridCell {
@@ -67,12 +68,21 @@ interface GridCell {
   isObstacle: boolean;
 }
 
+interface ChatMessage {
+  sender_id: string;
+  sender_name: string;
+  content: string;
+  timestamp: string;
+  channel: string;
+}
+
 const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onReturnToLobby }) => {
   const [selectedHero, setSelectedHero] = useState<Hero | null>(null);
   const [hoveredHero, setHoveredHero] = useState<Hero | null>(null);
   const [selectedAbility, setSelectedAbility] = useState<Ability | null>(null);
   const [remainingMovement, setRemainingMovement] = useState<number>(0);
   const [gameStatus, setGameStatus] = useState<string>('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const soundManager = useMemo(() => SoundManager.getInstance(), []);
 
@@ -112,6 +122,9 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
           setSelectedAbility(null);
           setHoveredHero(null);
         }
+      } else if (data.type === 'chat_message') {
+        // Handle chat messages
+        setChatMessages(prev => [...prev, data.payload]);
       }
     } catch (error) {
       console.error('Error parsing game message:', error);
@@ -273,7 +286,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
           payload: {
             hero_id: selectedHero.id,
             ability_id: selectedAbility.id,
-            target_position: { x, y }  // Send position instead of hero ID
+            target_position: { x, y }  
           }
         });
         // Play ability sound
@@ -287,7 +300,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
           type: 'move_hero',
           payload: {
             hero_id: selectedHero.id,
-            position: { x, y }  // Changed from 'target' to 'position'
+            position: { x, y }  
           }
         });
       }
@@ -324,6 +337,17 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
     setSelectedHero(null);
     setSelectedAbility(null);
     setHoveredHero(null);
+  };
+
+  const handleSendMessage = (content: string, channel: string) => {
+    send(JSON.stringify({
+      type: 'chat_message',
+      payload: {
+        content,
+        channel,
+        player_name: gameState.players[playerId]?.name || 'Unknown Player'
+      }
+    }));
   };
 
   // Update selected hero when game state changes
@@ -489,6 +513,14 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
           </div>
         )}
       </div>
+
+      <Chat
+        gameId={gameState.game_id}
+        playerId={playerId}
+        playerName={gameState.players[playerId]?.name || 'Unknown Player'}
+        onSendMessage={handleSendMessage}
+        messages={chatMessages}
+      />
 
       {gameState.status === 'game_over' && (
         <div className="game-over-overlay">
