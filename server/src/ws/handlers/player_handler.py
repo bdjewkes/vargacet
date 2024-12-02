@@ -33,10 +33,6 @@ async def handle_start_game(websocket: WebSocket, game: GameState, player_id: st
         await send_error(websocket, "All players must set their names")
         return False, "Missing player names"
 
-    logger.info(f"Starting game {game.game_id}")
-    game.status = GameStatus.IN_PROGRESS
-    game.initialize_heroes()
-    game.generate_obstacles()
-    game.set_next_turn()
+    game.start_game()
     
     return True, ""

@@ -250,16 +250,16 @@ class GameState(BaseModel):
 
     def generate_obstacles(self) -> None:
         """Generate a small number of random obstacles"""
-        num_obstacles = int(self.grid_size * self.grid_size * 0.10)  # 15% of grid squares
+        num_obstacles = int(self.grid_size * self.grid_size * 0.10)
         self.obstacles.clear()
         
         # Keep track of positions we want to keep clear for heroes
         reserved_positions = set()
         reserved_player_starting_height = 3
-        for y in range(reserved_player_starting_height):  # Reserve first four rows for player 1
+        for y in range(reserved_player_starting_height):
             for x in range(self.grid_size):
                 reserved_positions.add(f"{x},{y}")
-        for y in range(self.grid_size-reserved_player_starting_height, self.grid_size):  # Reserve last four rows for player 2
+        for y in range(self.grid_size-reserved_player_starting_height, self.grid_size):
             for x in range(self.grid_size):
                 reserved_positions.add(f"{x},{y}")
 
@@ -293,8 +293,9 @@ class GameState(BaseModel):
         pos_key = f"{x},{y}"
         return pos_key not in self.obstacles
 
-    def find_path(self, start: Position, end: Position, max_distance: int) -> Optional[List[Position]]:
-        """Find a valid path from start to end position within max_distance"""
+    def find_path(self, start: Position, end: Position, max_distance: int, ignore_heroes: bool = False) -> Optional[List[Position]]:
+        """Find a valid path from start to end position within max_distance.
+        If ignore_heroes is True, heroes won't block the path (used for ability range checks)"""
         if not self.is_valid_position(end.x, end.y):
             return None
 
@@ -330,7 +331,8 @@ class GameState(BaseModel):
 
                 if (new_key not in visited and 
                     self.is_valid_position(new_x, new_y) and
-                    new_key not in self.obstacles):
+                    new_key not in self.obstacles and
+                    (ignore_heroes or not self.is_position_occupied(new_x, new_y))):
                     new_path = path + [Position(x=new_x, y=new_y)]
                     manhattan_dist = abs(end.x - new_x) + abs(end.y - new_y)
                     x_dist = abs(end.x - new_x)
@@ -574,9 +576,12 @@ class GameState(BaseModel):
         return None
 
     def is_in_range(self, start: Position, end: Position, range: int) -> bool:
-        """Check if a position is within a given range"""
-        distance = abs(start.x - end.x) + abs(start.y - end.y)
-        return distance <= range
+        """Check if a position is within a given range using find_path.
+        For ability range checks, we ignore heroes blocking the path."""
+        path = self.find_path(start, end, range, ignore_heroes=True)
+        if not path:
+            return False
+        return len(path) - 1 <= range
 
     def start_game(self) -> None:
         """Start the game by initializing heroes and setting initial game state"""
@@ -605,27 +610,13 @@ class GameState(BaseModel):
         if hero.owner_id != self.current_turn:
             return False
             
-        # Check if hero has already moved
-        if self.moved_hero_id == hero_id:
+        # Check if another hero has already moved (only one hero can move per turn)
+        if self.moved_hero_id and self.moved_hero_id != hero_id:
             return False
             
-        # Check if position is within grid bounds
-        if (new_position.x < 0 or new_position.x >= self.grid_size or
-            new_position.y < 0 or new_position.y >= self.grid_size):
-            return False
-            
-        # Check if position is occupied by another hero
-        target_hero = self.get_hero_at_position(new_position)
-        if target_hero:
-            return False
-            
-        # Check if position is an obstacle
-        pos_key = f"{new_position.x},{new_position.y}"
-        if pos_key in self.obstacles:
-            return False
-            
-        # Check if there is a valid path within movement points
-        path = self.find_path(hero.position, new_position, hero.max_movement)
+        # Try to move the hero
+        # Get path to new position
+        path = self.find_path(hero.position, new_position, hero.movement_points, ignore_heroes=False)
         if not path:
             return False
             

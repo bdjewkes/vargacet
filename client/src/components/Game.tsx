@@ -131,7 +131,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
       .find(h => h.position.x === x && h.position.y === y) || null;
   };
 
-  const findPath = (start: Position, end: Position, maxDistance: number): Position[] | null => {
+  const findPath = (start: Position, end: Position, maxDistance: number, ignoreHeroes: boolean = false): Position[] | null => {
     // A* pathfinding implementation
     const queue: [Position, Position[], number][] = [
       [start, [start], 0]
@@ -169,9 +169,11 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
         // Check for obstacles
         if (gameState.obstacles.includes(moveKey)) continue;
 
-        // Check for other heroes
-        const heroAtPosition = getHeroAtPosition(move.x, move.y);
-        if (heroAtPosition && (heroAtPosition.id !== selectedHero?.id)) continue;
+        // Check for other heroes if we're not ignoring them
+        if (!ignoreHeroes) {
+          const heroAtPosition = getHeroAtPosition(move.x, move.y);
+          if (heroAtPosition && (heroAtPosition.id !== selectedHero?.id)) continue;
+        }
 
         queue.push([move, [...path, move], distance + 1]);
       }
@@ -185,7 +187,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
     if (gameState.moved_hero_id === selectedHero.id) return false;
 
     const targetPos = { x, y };
-    const path = findPath(selectedHero.position, targetPos, selectedHero.movement_points);
+    const path = findPath(selectedHero.position, targetPos, selectedHero.movement_points, false);
     return path !== null;
   };
 
@@ -193,7 +195,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
     if (!selectedHero || !isMyTurn) return false;
 
     // For abilities, we need line of sight - no obstacles in the way
-    const path = findPath(start, end, range);
+    const path = findPath(start, end, range, true);
     if (!path) return false;
 
     // Check if path length is within range
