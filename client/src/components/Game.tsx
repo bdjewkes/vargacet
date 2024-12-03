@@ -22,18 +22,21 @@ interface Ability {
   action_cost: number; 
 }
 
+interface Gauge {
+  current: number;
+  maximum: number;
+}
+
 interface Hero {
   id: string;
   position: Position;
   start_position?: Position;
   owner_id: string;
-  current_hp: number;
-  max_hp: number;
+  hp: Gauge;
   damage: number;
-  movement_points: number;
+  movement: Gauge;
   armor: number;
-  max_action_points: number;
-  current_action_points: number;
+  action_points: Gauge;
   abilities: Ability[];
   name: string;
 }
@@ -206,7 +209,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
     if (gameState.moved_hero_id === selectedHero.id) return false;
 
     const targetPos = { x, y };
-    const path = findPath(selectedHero.position, targetPos, selectedHero.movement_points, false);
+    const path = findPath(selectedHero.position, targetPos, selectedHero.movement.current, false);
     return path !== null;
   };
 
@@ -245,7 +248,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
         {hero && (
           <div 
             className={`hero ${hero.owner_id === playerId ? 'player-hero' : 'enemy-hero'}`}
-            title={`${hero.name} (HP: ${hero.current_hp}/${hero.max_hp})`}
+            title={`${hero.name} (HP: ${hero.hp.current}/${hero.hp.maximum})`}
           >
             {hero.name}
           </div>
@@ -428,23 +431,23 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
                   <div 
                     className="hp-fill" 
                     style={{ 
-                      width: `${((hoveredHero?.current_hp || selectedHero?.current_hp || 0) / 
-                               (hoveredHero?.max_hp || selectedHero?.max_hp || 1)) * 100}%` 
+                      width: `${((hoveredHero?.hp.current || selectedHero?.hp.current || 0) / 
+                               (hoveredHero?.hp.maximum || selectedHero?.hp.maximum || 1)) * 100}%` 
                     }}
                   />
                   <span className="hp-text">
-                    {hoveredHero?.current_hp || selectedHero?.current_hp || 0}/
-                    {hoveredHero?.max_hp || selectedHero?.max_hp || 0}
+                    {hoveredHero?.hp.current || selectedHero?.hp.current || 0}/
+                    {hoveredHero?.hp.maximum || selectedHero?.hp.maximum || 0}
                   </span>
                 </div>
               </div>
               <div className="stat-row">
                 <span>AP:</span>
                 <div className="action-points">
-                  {Array.from({ length: hoveredHero?.max_action_points || selectedHero?.max_action_points || 0 }).map((_, i) => (
+                  {Array.from({ length: hoveredHero?.action_points.maximum || selectedHero?.action_points.maximum || 0 }).map((_, i) => (
                     <div 
                       key={i} 
-                      className={`action-point ${i < (hoveredHero?.current_action_points || selectedHero?.current_action_points || 0) ? 'active' : ''}`}
+                      className={`action-point ${i < (hoveredHero?.action_points.current || selectedHero?.action_points.current || 0) ? 'active' : ''}`}
                     />
                   ))}
                 </div>
@@ -459,7 +462,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
               </div>
               <div className="stat-row">
                 <span>Movement:</span>
-                <span className="movement-remaining">{hoveredHero?.movement_points || selectedHero?.movement_points || 0}</span>
+                <span className="movement-remaining">{hoveredHero?.movement.current || selectedHero?.movement.current || 0}</span>
               </div>
             </div>
             
@@ -469,7 +472,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
                 {(hoveredHero || selectedHero)?.abilities.map(ability => {
                   const hero = selectedHero || hoveredHero;
                   const disabled = !selectedHero || hoveredHero || 
-                    (hero && hero.current_action_points < ability.action_cost);
+                    (hero && hero.action_points.current < ability.action_cost);
                   
                   return (
                     <button

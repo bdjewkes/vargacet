@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional, Set, Tuple, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from enum import Enum
 import random
 import logging
@@ -34,19 +34,52 @@ class Ability(BaseModel):
     effect: Effect
     action_cost: int = 1  # Default cost of 1 action point
 
+class Gauge(BaseModel):
+    """A class for managing stats with current and max values"""
+    current: int
+    maximum: int
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.current > self.maximum:
+            self.current = self.maximum
+
+    def reset(self) -> None:
+        """Reset current value to maximum"""
+        self.current = self.maximum
+
+    def add(self, amount: int) -> int:
+        """Add to current value, not exceeding maximum. Returns amount actually added."""
+        old_value = self.current
+        self.current = min(self.current + amount, self.maximum)
+        return self.current - old_value
+
+    def subtract(self, amount: int) -> int:
+        """Subtract from current value, not going below 0. Returns amount actually subtracted."""
+        old_value = self.current
+        self.current = max(self.current - amount, 0)
+        return old_value - self.current
+
+    @property
+    def is_empty(self) -> bool:
+        """Check if current value is 0"""
+        return self.current == 0
+
+    @property
+    def is_full(self) -> bool:
+        """Check if current value is at maximum"""
+        return self.current == self.maximum
+
 class Hero(BaseModel):
     id: str
     position: Position
     start_position: Optional[Position] = None
     owner_id: str
-    current_hp: int = 10
-    max_hp: int = 10
+    hp: Gauge = Field(default_factory=lambda: Gauge(current=10, maximum=10))
     damage: int = 5
-    max_movement: int = 5
-    movement_points: int = 5
+    movement: Gauge = Field(default_factory=lambda: Gauge(current=5, maximum=5))
     armor: int = 3
-    max_action_points: int = 2
-    current_action_points: int = 2
+    action_points: Gauge = Field(default_factory=lambda: Gauge(current=2, maximum=2))
     abilities: List[Ability] = [
         Ability(
             id="heal_1",
@@ -80,9 +113,9 @@ class Hero(BaseModel):
     name: str  # Single letter A-Z
 
     def reset_movement(self):
-        """Reset movement points at the start of turn"""
-        self.movement_points = self.max_movement
-        self.current_action_points = self.max_action_points
+        """Reset movement points and action points at the start of turn"""
+        self.movement.reset()
+        self.action_points.reset()
 
     def can_move_to(self, new_position: Position, game_state: 'GameState') -> bool:
         """Check if hero can move to new position based on remaining points and valid path"""
@@ -94,12 +127,12 @@ class Hero(BaseModel):
         if target_pos_str in game_state.obstacles:
             return False
 
-        path = game_state.find_path(self.position, new_position, self.movement_points)
+        path = game_state.find_path(self.position, new_position, self.movement.current)
         if not path:
             return False
 
         path_length = len(path) - 1
-        if path_length > self.movement_points:
+        if path_length > self.movement.current:
             return False
 
         return True
@@ -109,7 +142,7 @@ class Hero(BaseModel):
         if not self.can_move_to(new_position, game_state):
             return False
 
-        path = game_state.find_path(self.position, new_position, self.movement_points)
+        path = game_state.find_path(self.position, new_position, self.movement.current)
         if not path:
             return False
 
@@ -120,7 +153,7 @@ class Hero(BaseModel):
             self.start_position = Position(x=self.position.x, y=self.position.y)
         
         self.position = new_position
-        self.movement_points -= movement_cost
+        self.movement.subtract(movement_cost)
         
         game_state.moved_hero_id = self.id
         
@@ -129,7 +162,7 @@ class Hero(BaseModel):
     def undo_move(self):
         """Undo movement and restore movement points"""
         if self.start_position:
-            self.movement_points = self.max_movement
+            self.movement.reset()
             self.position = self.start_position
             self.start_position = None
 
@@ -427,20 +460,19 @@ class GameState(BaseModel):
             for hero in current_player.heroes:
                 hero.reset_movement()
                 # Reset action points at turn start
-                hero.current_action_points = hero.max_action_points
+                hero.action_points.reset()
 
     def save_turn_state(self) -> None:
         """Save the current game state at the start of a turn"""
-        # Create a copy of the current state, excluding the start_of_turn_state and current_turn
-        current_state = self.dict(exclude={'start_of_turn_state', 'current_turn'})
+        # Save the current state excluding the turn state itself
+        current_state = self.model_dump(exclude={'start_of_turn_state', 'current_turn'})
         
-        # Convert PlayerState objects to their dict representation
-        if 'players' in current_state:
-            current_state['players'] = {
-                player_id: player.dict() 
-                for player_id, player in self.players.items()
-            }
-        
+        # Convert players to dict format
+        players_dict = {}
+        for player_id, player in self.players.items():
+            players_dict[player_id] = player.model_dump()
+            
+        current_state['players'] = players_dict
         self.start_of_turn_state = current_state
 
     def undo_turn(self) -> bool:
@@ -477,9 +509,9 @@ class GameState(BaseModel):
         dead_heroes = []
         for player in self.players.values():
             # Find dead heroes
-            dead = [hero for hero in player.heroes if hero.current_hp <= 0]
+            dead = [hero for hero in player.heroes if hero.hp.current <= 0]
             # Remove them from the player's hero list
-            player.heroes = [hero for hero in player.heroes if hero.current_hp > 0]
+            player.heroes = [hero for hero in player.heroes if hero.hp.current > 0]
             dead_heroes.extend(dead)
             
             # Check if this player has lost (no heroes left)
@@ -499,10 +531,10 @@ class GameState(BaseModel):
             # Apply damage, considering armor reduction
             damage_reduction = target_hero.armor / 100.0  # Convert armor to percentage
             actual_damage = int(effect.amount * (1 - damage_reduction))
-            target_hero.current_hp = max(0, target_hero.current_hp - actual_damage)
+            target_hero.hp.subtract(actual_damage)
         elif effect.type == EffectType.HEAL:
             # Apply healing, not exceeding max HP
-            target_hero.current_hp = min(target_hero.max_hp, target_hero.current_hp + effect.amount)
+            target_hero.hp.add(effect.amount)
         
         # Check for and handle any deaths
         dead_heroes = self.remove_dead_heroes()
@@ -525,7 +557,7 @@ class GameState(BaseModel):
             return False, "Ability not found", []
             
         # Check if hero has enough action points
-        if hero.current_action_points < ability.action_cost:
+        if hero.action_points.current < ability.action_cost:
             return False, "Not enough action points", []
             
         # Check range using Manhattan distance
@@ -547,7 +579,7 @@ class GameState(BaseModel):
                 return False, "No targets in area", []
             
         # Consume action points
-        hero.current_action_points -= ability.action_cost
+        hero.action_points.subtract(ability.action_cost)
             
         # Apply the effect to all affected heroes
         dead_heroes = []
@@ -560,7 +592,7 @@ class GameState(BaseModel):
         return True, None, dead_heroes
 
     def get_hero_by_id(self, hero_id: str) -> Optional[Hero]:
-        """Find a hero by ID"""
+        """Get a hero by their ID"""
         for player in self.players.values():
             for hero in player.heroes:
                 if hero.id == hero_id:
@@ -568,7 +600,7 @@ class GameState(BaseModel):
         return None
 
     def get_hero_at_position(self, position: Position) -> Optional[Hero]:
-        """Find a hero at a given position"""
+        """Get a hero at a given position"""
         for player in self.players.values():
             for hero in player.heroes:
                 if hero.position.x == position.x and hero.position.y == position.y:
@@ -608,48 +640,44 @@ class GameState(BaseModel):
         hero = self.get_hero_by_id(hero_id)
         if not hero:
             return False
-        
-        # Check if it's this hero's turn
-        if hero.owner_id != self.current_turn:
+            
+        # Check if position is valid
+        if not self.is_valid_position(new_position.x, new_position.y):
             return False
             
-        # Check if another hero has already moved (only one hero can move per turn)
-        if self.moved_hero_id and self.moved_hero_id != hero_id:
-            return False
-            
-        # Try to move the hero
-        # Get path to new position
-        path = self.find_path(hero.position, new_position, hero.movement_points, ignore_heroes=False)
-        if not path:
+        # Check if position is occupied
+        if self.get_hero_at_position(new_position):
             return False
             
         # Check if path length is within movement points
+        path = self.find_path(hero.position, new_position, hero.movement.current)
+        if not path:
+            return False
+            
         path_length = len(path) - 1
-        if path_length > hero.movement_points:
+        if path_length > hero.movement.current:
             return False
             
         return True
 
     def move_hero(self, hero_id: str, new_position: Position) -> bool:
         """Move a hero to a new position"""
+        if not self.can_move_to(hero_id, new_position):
+            return False
+            
         hero = self.get_hero_by_id(hero_id)
         if not hero:
             return False
             
-        # Verify it's this hero's turn
-        if hero.owner_id != self.current_turn:
+        path = self.find_path(hero.position, new_position, hero.movement.current)
+        if not path:
             return False
             
-        # Check if another hero has already moved (only one hero can move per turn)
-        if self.moved_hero_id and self.moved_hero_id != hero_id:
-            return False
-            
-        # Try to move the hero
-        if hero.move_to(new_position, self):
-            self.moved_hero_id = hero_id
-            return True
-            
-        return False
+        movement_cost = len(path) - 1
+        hero.movement.subtract(movement_cost)
+        hero.position = new_position
+        
+        return True
 
     def get_heroes_in_area(self, center: Position, radius: int) -> List[Hero]:
         """Find all heroes within a radius of a position using Manhattan distance"""

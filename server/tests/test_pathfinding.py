@@ -21,6 +21,24 @@ class TestPathfinding(unittest.TestCase):
         self.game.add_player(self.player1)
         self.game.add_player(self.player2)
         
+        # Manually create heroes for testing
+        hero1 = Hero(
+            id=f"{self.player1}_hero_1",
+            position=Position(x=0, y=0),
+            owner_id=self.player1,
+            name="A"
+        )
+        hero2 = Hero(
+            id=f"{self.player2}_hero_1",
+            position=Position(x=4, y=4),
+            owner_id=self.player2,
+            name="B"
+        )
+        
+        # Add heroes to players
+        self.game.players[self.player1].heroes.append(hero1)
+        self.game.players[self.player2].heroes.append(hero2)
+        
         # Get references to heroes for testing
         self.hero1 = self.game.players[self.player1].heroes[0]
         self.hero2 = self.game.players[self.player2].heroes[0]
@@ -193,7 +211,7 @@ class TestPathfinding(unittest.TestCase):
 
     def test_cannot_move_to_occupied_position(self):
         # Try to move to second player's hero position
-        target_pos = Position(x=1, y=4)  # Position of player2's first hero
+        target_pos = Position(x=4, y=4)  # Position of player2's first hero
         self.assertFalse(self.game.can_move_to(self.hero1.id, target_pos))
 
     def test_cannot_move_to_obstacle(self):
@@ -216,15 +234,15 @@ class TestPathfinding(unittest.TestCase):
     def test_game_over(self):
         self.game.start_game()
         
-        # Kill all of player2's heroes
-        for hero in self.game.players[self.player2].heroes:
-            hero.current_hp = 0
+        # Kill one hero
+        hero = self.game.players[self.player1].heroes[0]
+        hero.hp.current = 0  # Set HP to 0 using Gauge
         
         dead_heroes = self.game.remove_dead_heroes()
         
-        self.assertEqual(len(dead_heroes), 2)
+        self.assertEqual(len(dead_heroes), 1)
         self.assertEqual(self.game.status.value, "game_over")  # Compare the enum value
-        self.assertEqual(self.game.current_turn, self.player1)  # Winner
+        self.assertEqual(self.game.current_turn, self.player2)  # Winner
 
     def test_path_validity(self):
         """Test that paths are valid (no diagonal movement, no obstacles)"""
@@ -273,19 +291,17 @@ class TestPathfinding(unittest.TestCase):
 
     def test_movement_points_reset(self):
         """Test that movement points are reset at the start of each turn"""
-        self.game.start_game()
-        
-        # Move hero to use some movement points
-        self.game.move_hero(self.hero1.id, Position(x=1, y=1))
-        initial_points = self.hero1.movement_points
+        # Move hero to use some points
+        self.game.move_hero(self.hero1.id, Position(x=1, y=0))
+        used_points = self.hero1.movement.current
         
         # End turn and start new turn
         self.game.set_next_turn()
         self.game.set_next_turn()  # Back to first player
         
         # Movement points should be reset
-        self.assertEqual(self.hero1.movement_points, self.hero1.max_movement)
-        self.assertGreater(self.hero1.movement_points, initial_points)
+        self.assertEqual(self.hero1.movement.current, self.hero1.movement.maximum)
+        self.assertGreater(self.hero1.movement.current, used_points)
 
 if __name__ == '__main__':
     unittest.main()
