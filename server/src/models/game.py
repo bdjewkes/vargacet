@@ -32,7 +32,8 @@ class Ability(BaseModel):
     name: str
     range: int
     effect: Effect
-    action_cost: int = 1  # Default cost of 1 action point
+    action_cost: int = 1
+    mana_cost: int = 0
 
 class Gauge(BaseModel):
     """A class for managing stats with current and max values"""
@@ -80,34 +81,39 @@ class Hero(BaseModel):
     movement: Gauge = Field(default_factory=lambda: Gauge(current=5, maximum=5))
     armor: int = 3
     action_points: Gauge = Field(default_factory=lambda: Gauge(current=2, maximum=2))
+    mana: Gauge = Field(default_factory=lambda: Gauge(current=10, maximum=10))
     abilities: List[Ability] = [
         Ability(
             id="heal_1",
             name="Heal",
             range=3,
             effect=Effect(type=EffectType.HEAL, amount=5),
-            action_cost=2
+            action_cost=2,
+            mana_cost=3
         ),
         Ability(
             id="damage_1",
             name="Punch",
             range=1,
             effect=Effect(type=EffectType.DAMAGE, amount=6),
-            action_cost=1
+            action_cost=1,
+            mana_cost=0
         ),
         Ability(
             id="ranged_1",
             name="Shortbow",
             range=3,
             effect=Effect(type=EffectType.DAMAGE, amount=4),
-            action_cost=1
+            action_cost=1,
+            mana_cost=0
         ),
         Ability(
             id="explosion_1",
             name="Explosion",
             range=4,
             effect=Effect(type=EffectType.DAMAGE, amount=3, area_of_effect=1),
-            action_cost=2
+            action_cost=2,
+            mana_cost=4
         ),
     ]
     name: str  # Single letter A-Z
@@ -200,28 +206,32 @@ class GameState(BaseModel):
                     name="Heal",
                     range=3,
                     effect=Effect(type=EffectType.HEAL, amount=5),
-                    action_cost=2
+                    action_cost=2,
+                    mana_cost=3
                 ),
                 Ability(
                     id="damage_1",
                     name="Punch",
                     range=1,
                     effect=Effect(type=EffectType.DAMAGE, amount=6),
-                    action_cost=1
+                    action_cost=1,
+                    mana_cost=0
                 ),
                 Ability(
                     id="ranged_1",
                     name="Shortbow",
                     range=3,
                     effect=Effect(type=EffectType.DAMAGE, amount=4),
-                    action_cost=1
+                    action_cost=1,
+                    mana_cost=0
                 ),
                 Ability(
                     id="explosion_1",
                     name="Explosion",
                     range=4,
                     effect=Effect(type=EffectType.DAMAGE, amount=3, area_of_effect=1),
-                    action_cost=2
+                    action_cost=2,
+                    mana_cost=4
                 ),
             ]
         )
@@ -461,6 +471,7 @@ class GameState(BaseModel):
                 hero.reset_movement()
                 # Reset action points at turn start
                 hero.action_points.reset()
+                hero.mana.reset()
 
     def save_turn_state(self) -> None:
         """Save the current game state at the start of a turn"""
@@ -510,6 +521,8 @@ class GameState(BaseModel):
         for player in self.players.values():
             # Find dead heroes
             dead = [hero for hero in player.heroes if hero.hp.current <= 0]
+            if dead:
+                logger.info(f"Found dead heroes: {[h.name for h in dead]}")
             # Remove them from the player's hero list
             player.heroes = [hero for hero in player.heroes if hero.hp.current > 0]
             dead_heroes.extend(dead)
@@ -523,6 +536,8 @@ class GameState(BaseModel):
                 logger.info(f"Game {self.game_id} over. Winner: {winner_id}")
                 break
                 
+        if dead_heroes:
+            logger.info(f"Returning dead heroes: {[h.name for h in dead_heroes]}")
         return dead_heroes
 
     def apply_effect(self, target_hero: Hero, effect: Effect) -> List[Hero]:
@@ -531,7 +546,9 @@ class GameState(BaseModel):
             # Apply damage, considering armor reduction
             damage_reduction = target_hero.armor / 100.0  # Convert armor to percentage
             actual_damage = int(effect.amount * (1 - damage_reduction))
+            logger.info(f"Applying {actual_damage} damage to {target_hero.name} (HP: {target_hero.hp.current}/{target_hero.hp.maximum})")
             target_hero.hp.subtract(actual_damage)
+            logger.info(f"After damage: {target_hero.name} HP: {target_hero.hp.current}/{target_hero.hp.maximum}")
         elif effect.type == EffectType.HEAL:
             # Apply healing, not exceeding max HP
             target_hero.hp.add(effect.amount)
@@ -560,6 +577,10 @@ class GameState(BaseModel):
         if hero.action_points.current < ability.action_cost:
             return False, "Not enough action points", []
             
+        # Check if hero has enough mana
+        if hero.mana.current < ability.mana_cost:
+            return False, "Not enough mana", []
+            
         # Check range using Manhattan distance
         distance = abs(hero.position.x - target_position.x) + abs(hero.position.y - target_position.y)
         if distance > ability.range:
@@ -578,16 +599,27 @@ class GameState(BaseModel):
             if not affected_heroes:
                 return False, "No targets in area", []
             
-        # Consume action points
+        # Consume action points and mana
         hero.action_points.subtract(ability.action_cost)
+        hero.mana.subtract(ability.mana_cost)
             
         # Apply the effect to all affected heroes
         dead_heroes = []
         for target_hero in affected_heroes:
+            logger.info(f"Applying {ability.name} from {hero.name} to {target_hero.name}")
             dead_heroes.extend(self.apply_effect(target_hero, ability.effect))
         
-        # Remove duplicates from dead_heroes list
-        dead_heroes = list(set(dead_heroes))
+        # Remove duplicates from dead_heroes list by comparing hero IDs
+        seen_ids = set()
+        unique_dead_heroes = []
+        for h in dead_heroes:
+            if h.id not in seen_ids:
+                seen_ids.add(h.id)
+                unique_dead_heroes.append(h)
+        dead_heroes = unique_dead_heroes
+        
+        if dead_heroes:
+            logger.info(f"Ability {ability.name} killed heroes: {[h.name for h in dead_heroes]}")
             
         return True, None, dead_heroes
 

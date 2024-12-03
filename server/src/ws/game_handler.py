@@ -87,13 +87,17 @@ class ConnectionManager:
         game = self.games[game_id]
         game_state = game.get_game_status()
         
-        if dead_heroes:
-            game_state["dead_heroes"] = dead_heroes
-            
         message = {
             "type": "game_state",
             "payload": game_state
         }
+        
+        if dead_heroes:
+            logger.info(f"Broadcasting dead heroes: {dead_heroes}")
+            # Note: dead_heroes is already in JSON format from ability_handler
+            message["dead_heroes"] = dead_heroes
+        
+        logger.info(f"Broadcasting message: {message}")
         
         for player_id, connection in self.active_connections[game_id].items():
             try:

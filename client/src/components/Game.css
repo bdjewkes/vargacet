@@ -237,150 +237,156 @@
   font-size: 1.2em;
 }
 
+.stat-panel {
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
 .stat-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 0.5rem;
-  background: #f8f9fa;
-  border-radius: 4px;
+  margin-bottom: 5px;
+  gap: 10px;
 }
 
-.stat-row span:first-child {
-  color: #666;
-  font-weight: 500;
+.stat-label {
+  width: 30px;
+  font-weight: bold;
+  color: #333;
 }
 
-.stat-row span:last-child {
-  font-weight: 600;
-  color: #2c3e50;
-}
-
-.movement-remaining {
-  color: #27ae60;
-  font-weight: 600;
-}
-
-.hp-bar {
-  width: 100%;
-  height: 8px;
+.stat-bar-container {
+  flex: 1;
+  height: 20px;
   background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
-  overflow: hidden;
+  border-radius: 3px;
   position: relative;
+  overflow: hidden;
 }
 
-.hp-fill {
+.stat-bar {
   height: 100%;
-  background-color: #4caf50;
   transition: width 0.3s ease;
 }
 
-.hp-text {
+.stat-text {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  color: #fff;
-  font-size: 10px;
-  text-shadow: 0 0 2px rgba(0, 0, 0, 0.5);
-  white-space: nowrap;
-}
-
-.hero-abilities {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid #eee;
-}
-
-.hero-abilities h3 {
-  margin: 0 0 0.5rem 0;
-  color: #333;
-  font-size: 1.2em;
-}
-
-.ability-list {
+  width: 100%;
+  height: 100%;
   display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.action-points, .movement-points {
+  display: flex;
+  gap: 4px;
+}
+
+.action-point, .movement-point {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: transparent;
+}
+
+.action-point {
+  border: 2px solid #ffff44;
+}
+
+.movement-point {
+  border: 2px solid #44ff44;
+}
+
+.action-point.active {
+  background-color: #ffff44;
+  box-shadow: 0 0 4px rgba(255, 255, 68, 0.5);
+}
+
+.movement-point.active {
+  background-color: #44ff44;
+  box-shadow: 0 0 4px rgba(68, 255, 68, 0.5);
+}
+
+.ability-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .ability-button {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.75rem 1rem;
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
+  padding: 8px 12px;
+  border: none;
   border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  background-color: #f0f0f0;
   color: #333;
-  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 100px;
+  transition: all 0.2s ease;
 }
 
-.ability-button:hover:not(.disabled) {
-  background: #e9ecef;
-  border-color: #ced4da;
+.ability-button:hover:not(:disabled) {
+  background-color: #e0e0e0;
+  transform: translateY(-1px);
+}
+
+.ability-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .ability-button.selected {
-  background: #e3f2fd;
-  border-color: #2196f3;
-  color: #1976d2;
-}
-
-.ability-button.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: #f0f0f0;
-  border-color: #ddd;
-  color: #999;
-}
-
-.ability-button.disabled:hover {
-  background: #f0f0f0;
-  border-color: #ddd;
+  background-color: #e3f2fd;
+  box-shadow: 0 0 0 2px #2196f3;
 }
 
 .ability-info {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+}
+
+.ability-name {
+  font-weight: bold;
+  color: #1a1a1a;
 }
 
 .ability-effect {
-  font-size: 0.9em;
+  font-size: 0.8em;
   color: #666;
-  font-weight: normal;
 }
 
 .ability-cost {
+  margin-top: 4px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ap-cost {
   display: flex;
   gap: 2px;
 }
 
-.ability-cost .action-point {
+.ap-cost .action-point {
   width: 8px;
   height: 8px;
 }
 
-.action-points {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-
-.action-point {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background-color: #ffd700;
-  opacity: 0.3;
-}
-
-.action-point.active {
-  opacity: 1;
+.mp-cost {
+  color: #2196f3;
+  font-weight: bold;
+  font-size: 0.9em;
 }
 
 .hero-stats-placeholder {

@@ -1,6 +1,9 @@
 from fastapi import WebSocket
 from typing import Tuple, List, Dict, Optional
 from ...models.game import GameState, GameStatus, Position, Hero
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def handle_ability(websocket: WebSocket, game: GameState, player_id: str, payload: dict) -> Tuple[bool, str, Optional[List[Dict]]]:
     """Handle ability usage"""
@@ -48,4 +51,13 @@ async def handle_ability(websocket: WebSocket, game: GameState, player_id: str, 
         })
         return False, error or "Invalid ability usage", None
 
-    return True, "", dead_heroes
+    # Log dead heroes for debugging
+    logger.info(f"Dead heroes before conversion: {dead_heroes}")
+    
+    # Convert dead heroes to JSON-serializable format
+    # We use model_dump() to get a dict, not a JSON string
+    dead_heroes_json = [hero.model_dump() for hero in dead_heroes] if dead_heroes else []
+    
+    logger.info(f"Dead heroes after conversion: {dead_heroes_json}")
+
+    return True, "", dead_heroes_json

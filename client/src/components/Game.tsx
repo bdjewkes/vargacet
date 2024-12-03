@@ -19,7 +19,8 @@ interface Ability {
   name: string;
   range: number;
   effect: Effect;
-  action_cost: number; 
+  action_cost: number;
+  mana_cost: number;
 }
 
 interface Gauge {
@@ -33,6 +34,7 @@ interface Hero {
   start_position?: Position;
   owner_id: string;
   hp: Gauge;
+  mana: Gauge;
   damage: number;
   movement: Gauge;
   armor: number;
@@ -54,15 +56,15 @@ interface GameState {
   current_turn: string | null;
   status: string;
   grid_size: number;
-  obstacles: string[];  
-  moved_hero_id: string | null;  
+  obstacles: string[];
+  moved_hero_id: string | null;
 }
 
 interface GameProps {
   gameState: GameState;
   playerId: string;
   onGameStateUpdate: (gameState: GameState) => void;
-  onReturnToLobby?: () => void;  
+  onReturnToLobby?: () => void;
 }
 
 interface GridCell {
@@ -94,17 +96,17 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
     try {
       const data = JSON.parse(event.data);
       console.log('Game received message:', data);
-      
+
       if (data.type === 'game_state') {
         // Update game state
         onGameStateUpdate(data.payload);
-        
+
         // Handle dead heroes
         if (data.dead_heroes && data.dead_heroes.length > 0) {
           data.dead_heroes.forEach((deadHero: Hero) => {
             // Play death sound
             soundManager.playDeathSound();
-            
+
             // Clear selection if the dead hero was selected
             if (selectedHero?.id === deadHero.id) {
               setSelectedHero(null);
@@ -116,7 +118,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
             }
           });
         }
-        
+
         // Handle game over
         if (data.winner_id) {
           const winnerName = data.winner_name || gameState.players[data.winner_id]?.name || 'Unknown Player';
@@ -273,6 +275,10 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
     setSelectedHero(null);
   };
 
+  const handleAbilityClick = (ability: Ability) => {
+    setSelectedAbility(selectedAbility?.id === ability.id ? null : ability);
+  };
+
   const handleCellClick = (x: number, y: number) => {
     // Disable interactions if game is over
     if (gameState.status === 'game_over') return;
@@ -353,6 +359,89 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
     }));
   };
 
+  const renderStatPanel = (hero: Hero) => {
+    if (!hero) return null;
+    
+    const isCurrentPlayer = hero.owner_id === playerId;
+    const healthPercent = (hero.hp.current / hero.hp.maximum) * 100;
+    const manaPercent = (hero.mana.current / hero.mana.maximum) * 100;
+    
+    return (
+      <div className="stat-panel">
+        <div className="stat-row">
+          <div className="stat-label">HP</div>
+          <div className="stat-bar-container">
+            <div className="stat-bar" style={{ width: `${healthPercent}%`, backgroundColor: '#ff4444' }} />
+            <div className="stat-text">{`${hero.hp.current}/${hero.hp.maximum}`}</div>
+          </div>
+        </div>
+        <div className="stat-row">
+          <div className="stat-label">MP</div>
+          <div className="stat-bar-container">
+            <div className="stat-bar" style={{ width: `${manaPercent}%`, backgroundColor: '#4444ff' }} />
+            <div className="stat-text">{`${hero.mana.current}/${hero.mana.maximum}`}</div>
+          </div>
+        </div>
+        <div className="stat-row">
+          <span className="stat-label">AP</span>
+          <div className="action-points">
+            {Array.from({ length: hero.action_points.maximum }).map((_, i) => (
+              <div 
+                key={i} 
+                className={`action-point ${i < hero.action_points.current ? 'active' : ''}`}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="stat-row">
+          <span className="stat-label">MV</span>
+          <div className="movement-points">
+            {Array.from({ length: hero.movement.maximum }).map((_, i) => (
+              <div 
+                key={i} 
+                className={`movement-point ${i < hero.movement.current ? 'active' : ''}`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAbilityPanel = (hero: Hero) => {
+    if (!hero || hero.owner_id !== playerId) return null;
+    
+    return (
+      <div className="ability-panel">
+        {hero.abilities.map((ability) => (
+          <button
+            key={ability.id}
+            className={`ability-button ${selectedAbility?.id === ability.id ? 'selected' : ''}`}
+            onClick={() => handleAbilityClick(ability)}
+            disabled={!isMyTurn || hero.action_points.current < ability.action_cost || hero.mana.current < ability.mana_cost}
+          >
+            <div className="ability-info">
+              <span className="ability-name">{ability.name}</span>
+              <span className="ability-effect">
+                ({ability.effect.type} {ability.effect.amount})
+              </span>
+            </div>
+            <div className="ability-cost">
+              {ability.action_cost > 0 && (
+                <div className="ap-cost">
+                  {Array.from({ length: ability.action_cost }).map((_, i) => (
+                    <div key={i} className="action-point active" />
+                  ))}
+                </div>
+              )}
+              {ability.mana_cost > 0 && <span className="mp-cost">{ability.mana_cost} MP</span>}
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+  };
+
   // Update selected hero when game state changes
   useEffect(() => {
     if (selectedHero) {
@@ -421,36 +510,10 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
           <div className="hero-info-panel">
             <div className="hero-stats">
               <h3>Hero {hoveredHero?.name || selectedHero?.name}</h3>
+              {renderStatPanel(hoveredHero || selectedHero)}
               <div className="stat-row">
                 <span>Owner:</span>
                 <span>{gameState.players[hoveredHero?.owner_id || selectedHero?.owner_id]?.name}</span>
-              </div>
-              <div className="stat-row">
-                <span>HP:</span>
-                <div className="hp-bar">
-                  <div 
-                    className="hp-fill" 
-                    style={{ 
-                      width: `${((hoveredHero?.hp.current || selectedHero?.hp.current || 0) / 
-                               (hoveredHero?.hp.maximum || selectedHero?.hp.maximum || 1)) * 100}%` 
-                    }}
-                  />
-                  <span className="hp-text">
-                    {hoveredHero?.hp.current || selectedHero?.hp.current || 0}/
-                    {hoveredHero?.hp.maximum || selectedHero?.hp.maximum || 0}
-                  </span>
-                </div>
-              </div>
-              <div className="stat-row">
-                <span>AP:</span>
-                <div className="action-points">
-                  {Array.from({ length: hoveredHero?.action_points.maximum || selectedHero?.action_points.maximum || 0 }).map((_, i) => (
-                    <div 
-                      key={i} 
-                      className={`action-point ${i < (hoveredHero?.action_points.current || selectedHero?.action_points.current || 0) ? 'active' : ''}`}
-                    />
-                  ))}
-                </div>
               </div>
               <div className="stat-row">
                 <span>Damage:</span>
@@ -460,48 +523,9 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
                 <span>Armor:</span>
                 <span>{hoveredHero?.armor || selectedHero?.armor || 0}</span>
               </div>
-              <div className="stat-row">
-                <span>Movement:</span>
-                <span className="movement-remaining">{hoveredHero?.movement.current || selectedHero?.movement.current || 0}</span>
-              </div>
             </div>
             
-            <div className="hero-abilities">
-              <h3>Abilities</h3>
-              <div className="ability-list">
-                {(hoveredHero || selectedHero)?.abilities.map(ability => {
-                  const hero = selectedHero || hoveredHero;
-                  const disabled = !selectedHero || hoveredHero || 
-                    (hero && hero.action_points.current < ability.action_cost);
-                  
-                  return (
-                    <button
-                      key={ability.id}
-                      className={`ability-button${
-                        selectedHero && selectedAbility?.id === ability.id ? ' selected' : ''
-                      }${disabled ? ' disabled' : ''}`}
-                      onClick={() => {
-                        if (!disabled) {
-                          setSelectedAbility(selectedAbility?.id === ability.id ? null : ability);
-                        }
-                      }}
-                    >
-                      <div className="ability-info">
-                        <span>{ability.name}</span>
-                        <span className="ability-effect">
-                          ({ability.effect.type} {ability.effect.amount})
-                        </span>
-                      </div>
-                      <div className="ability-cost">
-                        {Array.from({ length: ability.action_cost }).map((_, i) => (
-                          <div key={i} className="action-point active" />
-                        ))}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            {renderAbilityPanel(selectedHero)}
           </div>
         ) : (
           <div className="hero-stats-placeholder">
