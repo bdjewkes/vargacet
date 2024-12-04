@@ -203,6 +203,52 @@
   background-color: rgba(231, 76, 60, 0.7);
 }
 
+.cell.aoe-preview {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #ccc;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cell.aoe-preview:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.valid-move {
+  background-color: rgba(68, 255, 68, 0.2);
+}
+
+.valid-move:hover {
+  background-color: rgba(68, 255, 68, 0.3);
+}
+
+.valid-target {
+  background-color: rgba(255, 68, 68, 0.2);
+}
+
+.valid-target:hover {
+  background-color: rgba(255, 68, 68, 0.3);
+}
+
+.affected-cell {
+  background-color: rgba(255, 165, 0, 0.3);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    background-color: rgba(255, 165, 0, 0.2);
+  }
+  50% {
+    background-color: rgba(255, 165, 0, 0.4);
+  }
+  100% {
+    background-color: rgba(255, 165, 0, 0.2);
+  }
+}
+
 .hero {
   width: 40px;
   height: 40px;

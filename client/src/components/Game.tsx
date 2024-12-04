@@ -12,6 +12,8 @@ interface Position {
 interface Effect {
   type: 'heal' | 'damage';
   amount: number;
+  area_of_effect?: number;
+  shape?: 'circle' | 'square';
 }
 
 interface Ability {
@@ -88,6 +90,7 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
   const [remainingMovement, setRemainingMovement] = useState<number>(0);
   const [gameStatus, setGameStatus] = useState<string>('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [hoveredCell, setHoveredCell] = useState<Position | null>(null);
 
   const soundManager = useMemo(() => SoundManager.getInstance(), []);
 
@@ -226,26 +229,61 @@ const Game: React.FC<GameProps> = ({ gameState, playerId, onGameStateUpdate, onR
     return path.length - 1 <= range;
   };
 
+  const getAffectedCells = (targetX: number, targetY: number, ability: Ability): Position[] => {
+    if (!ability.effect.area_of_effect) return [{ x: targetX, y: targetY }];
+
+    const affected: Position[] = [];
+    const range = ability.effect.area_of_effect;
+
+    // Add all cells within Manhattan distance of range
+    for (let x = 0; x < gameState.grid_size; x++) {
+      for (let y = 0; y < gameState.grid_size; y++) {
+        const distance = Math.abs(x - targetX) + Math.abs(y - targetY);
+        if (distance <= range) {
+          affected.push({ x, y });
+        }
+      }
+    }
+
+    return affected;
+  };
+
+  const getCellClassName = (x: number, y: number) => {
+    let className = 'cell';
+    const isValidMove = selectedHero && canMoveTo(x, y);
+    const isValidTarget = selectedHero && selectedAbility && isInRange(selectedHero.position, { x, y }, selectedAbility.range);
+    
+    if (isValidMove) {
+      className += ' valid-move';
+    }
+    
+    if (isValidTarget) {
+      className += ' valid-target';
+    }
+
+    // Only show AOE preview when hovering over a valid target
+    if (hoveredCell && selectedAbility && selectedHero && 
+        isInRange(selectedHero.position, hoveredCell, selectedAbility.range)) {
+      const affectedCells = getAffectedCells(hoveredCell.x, hoveredCell.y, selectedAbility);
+      if (affectedCells.some(cell => cell.x === x && cell.y === y)) {
+        className += ' affected-cell';
+      }
+    }
+
+    return className;
+  };
+
   const renderCell = (x: number, y: number) => {
     const hero = getHeroAtPosition(x, y);
-    const isObstacle = gameState.obstacles.includes(`${x},${y}`);
-    const inRange = selectedHero && canMoveTo(x, y);
-    const isAbilityTarget = selectedHero && selectedAbility && isInRange(selectedHero.position, { x, y }, selectedAbility.range);
-    const isSelected = hero && selectedHero && hero.id === selectedHero.id;
-
-    let cellClasses = 'cell';
-    if (isObstacle) cellClasses += ' obstacle';
-    if (inRange && !isObstacle) cellClasses += ' in-range';
-    if (isAbilityTarget && !isObstacle) cellClasses += ' ability-target';
-    if (isSelected) cellClasses += ' selected';
+    const className = getCellClassName(x, y);
 
     return (
       <div
         key={`${x}-${y}`}
-        className={cellClasses}
+        className={className}
         onClick={() => handleCellClick(x, y)}
-        onMouseEnter={() => hero && setHoveredHero(hero)}
-        onMouseLeave={() => setHoveredHero(null)}
+        onMouseEnter={() => setHoveredCell({ x, y })}
+        onMouseLeave={() => setHoveredCell(null)}
       >
         {hero && (
           <div 
